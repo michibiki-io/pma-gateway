@@ -32,7 +32,7 @@ RUN apk add --no-cache ca-certificates tar wget \
     && mkdir -p /out \
     && tar -xzf /tmp/phpmyadmin.tar.gz -C /out --strip-components=1
 
-FROM php:8.3-apache-bookworm AS runtime
+FROM php:8.4-fpm-trixie AS runtime
 ARG PHPMYADMIN_VERSION
 ARG BUILD_COMMIT
 ARG BUILD_VERSION
@@ -42,28 +42,15 @@ ENV PMA_GATEWAY_LISTEN_ADDR=127.0.0.1:8081 \
     PMA_GATEWAY_PHPMYADMIN_VERSION=${PHPMYADMIN_VERSION} \
     BUILD_COMMIT=${BUILD_COMMIT} \
     BUILD_VERSION=${BUILD_VERSION} \
-    APACHE_RUN_DIR=/tmp/apache2-run \
-    APACHE_LOCK_DIR=/tmp/apache2-lock \
-    APACHE_PID_FILE=/tmp/apache2-run/apache2.pid \
-    APACHE_LOG_DIR=/tmp \
     PHP_INI_SCAN_DIR=/usr/local/etc/php/conf.d:/tmp/php-conf.d \
     PHP_SESSION_SAVE_PATH=/tmp/php-sessions
 
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends supervisor gosu gettext-base ca-certificates ${PHPIZE_DEPS}; \
+    apt-get install -y --no-install-recommends supervisor gosu gettext-base ca-certificates nginx-light ${PHPIZE_DEPS}; \
     docker-php-ext-install mysqli pdo_mysql; \
     pecl install redis; \
     docker-php-ext-enable redis; \
-    a2enmod rewrite proxy proxy_http headers expires; \
-    a2dissite 000-default; \
-    sed -i 's/^Listen 80$/Listen 8080/' /etc/apache2/ports.conf; \
-    printf '\nIncludeOptional /tmp/pma-gateway-apache.conf\n' >> /etc/apache2/apache2.conf; \
-    { \
-      echo 'session.save_path=/tmp/php-sessions'; \
-      echo 'upload_tmp_dir=/tmp'; \
-      echo 'expose_php=Off'; \
-    } > /usr/local/etc/php/conf.d/pma-gateway.ini; \
     apt-get purge -y --auto-remove ${PHPIZE_DEPS}; \
     rm -rf /var/lib/apt/lists/*
 
@@ -72,13 +59,14 @@ COPY --from=backend-build /out/pma-gateway /opt/pma-gateway/bin/pma-gateway
 COPY --from=phpmyadmin-fetch /out/ /opt/phpmyadmin/
 COPY phpmyadmin/config.user.inc.php.tmpl /opt/phpmyadmin/config.inc.php
 COPY phpmyadmin/pma-signon.php /opt/pma-gateway/php/pma-signon.php
-COPY docker/apache-site.conf.template /opt/pma-gateway/apache-site.conf.template
+COPY docker/nginx.conf.template /opt/pma-gateway/nginx.conf.template
+COPY docker/php-fpm.conf /opt/pma-gateway/php-fpm.conf
 COPY docker/supervisord.conf /etc/supervisor/conf.d/pma-gateway.conf
 COPY docker/entrypoint.sh /opt/pma-gateway/entrypoint.sh
 
 RUN set -eux; \
-    mkdir -p /opt/pma-gateway/empty /var/lib/pma-gateway /tmp/php-sessions /tmp/php-conf.d /tmp/apache2-run /tmp/apache2-lock; \
-    chown -R www-data:www-data /opt/pma-gateway /opt/phpmyadmin /var/lib/pma-gateway /tmp/php-sessions /tmp/php-conf.d /tmp/apache2-run /tmp/apache2-lock; \
+    mkdir -p /var/lib/pma-gateway /tmp/php-sessions /tmp/php-conf.d; \
+    chown -R www-data:www-data /opt/pma-gateway /opt/phpmyadmin /var/lib/pma-gateway /tmp/php-sessions /tmp/php-conf.d; \
     chmod +x /opt/pma-gateway/bin/pma-gateway /opt/pma-gateway/entrypoint.sh
 
 EXPOSE 8080

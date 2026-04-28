@@ -11,7 +11,7 @@ export default {
     adminCredentials: "Admin credentials",
     mappings: "Mappings",
     auditLog: "Audit log",
-    about: "Version info",
+    about: "About This Application",
     collapseSidebar: "Collapse menu",
     expandSidebar: "Expand menu",
     openMenu: "Open menu",
@@ -107,8 +107,8 @@ export default {
     emptyGroups: "No groups are available.",
   },
   about: {
-    title: "Version information",
-    open: "Open version information",
+    title: "About This Application",
+    open: "Open About This Application",
     description:
       "A web application that controls phpMyAdmin destinations for users and groups.",
     fields: {
