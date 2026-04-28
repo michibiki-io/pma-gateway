@@ -19,7 +19,7 @@ function gateway_secret(string $valueName, string $fileName, string $fallback = 
 }
 
 function gateway_public_base(): string {
-    $base = trim(gateway_env('PMA_GATEWAY_PUBLIC_BASE_PATH', '/dbadmin'));
+    $base = trim(gateway_env('PMA_GATEWAY_PUBLIC_BASE_PATH', '/'));
     if ($base === '' || $base === '/') {
         return '';
     }

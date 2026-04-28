@@ -29,7 +29,6 @@
     ADMIN_MAPPINGS: "admin-mappings",
     ADMIN_AUDIT: "admin-audit",
   };
-  const ABOUT_NAV_KEY = "about";
   const SUBJECT_TYPE_OPTIONS = ["user", "group"];
   const AUDIT_RESULT_OPTIONS = ["", "success", "failure", "denied"];
   const AUDIT_PAGE_SIZES = [10, 25, 50, 100];
@@ -43,7 +42,6 @@
     [ROUTES.ADMIN_CREDENTIALS]: "fa-solid fa-database",
     [ROUTES.ADMIN_MAPPINGS]: "fa-solid fa-diagram-project",
     [ROUTES.ADMIN_AUDIT]: "fa-solid fa-file-lines",
-    [ABOUT_NAV_KEY]: "fa-solid fa-circle-info",
   };
 
   const config = runtimeConfig();
@@ -1004,18 +1002,6 @@
           <span class="nav-link-label">{$_("nav.auditLog")}</span>
         </button>
       {/if}
-      <button
-        type="button"
-        class:active={aboutOpen}
-        class="nav-link"
-        aria-label={$_("nav.about")}
-        title={$_("nav.about")}
-        on:click={openAbout}
-      >
-        <i class={`nav-link-icon ${navIcon(ABOUT_NAV_KEY)}`} aria-hidden="true"
-        ></i>
-        <span class="nav-link-label">{$_("nav.about")}</span>
-      </button>
     </nav>
     <div class="sidebar-footer">
       <button

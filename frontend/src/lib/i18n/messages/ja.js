@@ -11,7 +11,7 @@ export default {
     adminCredentials: "接続情報管理",
     mappings: "マッピング",
     auditLog: "監査ログ",
-    about: "バージョン情報",
+    about: "このアプリケーションについて",
     collapseSidebar: "メニューを縮小",
     expandSidebar: "メニューを展開",
     openMenu: "メニューを開く",
@@ -107,8 +107,8 @@ export default {
     emptyGroups: "所属グループはありません。",
   },
   about: {
-    title: "バージョン情報",
-    open: "バージョン情報を開く",
+    title: "このアプリケーションについて",
+    open: "このアプリケーションについてを開く",
     description:
       "ユーザーやグループごとに phpMyAdmin への接続先を制御する Web アプリケーションです。",
     fields: {

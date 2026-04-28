@@ -9,21 +9,22 @@ The runtime image contains:
 - Go backend API
 - Svelte static frontend
 - phpMyAdmin configured with `signon` auth
-- PHP/Apache frontend server
+- nginx public HTTP server
+- PHP-FPM for phpMyAdmin and signon execution
 - supervisord process supervision
 - SQLite metadata storage
 
 Default public layout:
 
 ```text
-/dbadmin/              Unified public entry URL
-/dbadmin/_pma/         phpMyAdmin
-/dbadmin/_gateway/     pma-gateway frontend
-/dbadmin/_api/v1/      backend API
-/dbadmin/_signon.php   phpMyAdmin signon bridge
+/                     Unified public entry URL
+/_pma/                phpMyAdmin
+/_gateway/            pma-gateway frontend
+/_api/v1/             backend API
+/_signon.php          phpMyAdmin signon bridge
 ```
 
-The `/dbadmin/` entry redirects into phpMyAdmin. If phpMyAdmin has no valid session, phpMyAdmin redirects to the gateway frontend through `SignonURL`. The user chooses an allowed credential, the backend issues a short-lived one-time ticket, and the PHP signon bridge redeems that ticket over localhost using an internal shared secret.
+The `/` entry redirects into phpMyAdmin. If phpMyAdmin has no valid session, phpMyAdmin redirects to the gateway frontend through `SignonURL`. The user chooses an allowed credential, the backend issues a short-lived one-time ticket, and the PHP signon bridge redeems that ticket over localhost using an internal shared secret.
 
 ## Local Development
 
@@ -41,13 +42,13 @@ docker compose up --build
 Open:
 
 ```text
-http://localhost:8080/dbadmin/
+http://localhost:8080/
 ```
 
 The development proxy injects fake auth headers. The default user is `alice@example.com` with `db-users,db-admins`. To view as a non-admin user for the initial request:
 
 ```text
-http://localhost:8080/dbadmin/?as=bob
+http://localhost:8080/?as=bob
 ```
 
 The compose stack starts:
@@ -64,7 +65,7 @@ Important environment variables:
 
 ```text
 PMA_GATEWAY=true
-PMA_GATEWAY_PUBLIC_BASE_PATH=/dbadmin
+PMA_GATEWAY_PUBLIC_BASE_PATH=/
 PMA_GATEWAY_PMA_PATH=/_pma
 PMA_GATEWAY_FRONTEND_PATH=/_gateway
 PMA_GATEWAY_API_PATH=/_api
@@ -93,13 +94,18 @@ PMA_GATEWAY_TIMESTAMP_FORMAT=2006-01-02 15:04:05 MST
 PMA_GATEWAY_TIMESTAMP_TIMEZONE=Asia/Tokyo
 PMA_GATEWAY_PHPMYADMIN_LOGIN_COOKIE_VALIDITY=3600
 PMA_GATEWAY_PHP_SESSION_GC_MAXLIFETIME=3600
+PMA_GATEWAY_PHP_UPLOAD_MAX_FILESIZE=
+PMA_GATEWAY_PHP_POST_MAX_SIZE=
+PMA_GATEWAY_PHP_MEMORY_LIMIT=
+PMA_GATEWAY_PHP_MAX_EXECUTION_TIME=
+PMA_GATEWAY_PHP_MAX_INPUT_TIME=
 ```
 
-`PMA_GATEWAY_PUBLIC_BASE_PATH=/` is supported. The backend and generated Apache routing avoid double slashes for root-base deployments.
+`PMA_GATEWAY_PUBLIC_BASE_PATH` defaults to `/`. The backend and generated nginx routing avoid double slashes for root-base deployments.
 
 `PMA_GATEWAY=false` switches phpMyAdmin to direct login mode. In that mode:
 
-- `/dbadmin/` still redirects to phpMyAdmin, but the phpMyAdmin login screen is shown instead of the gateway UI
+- `/` still redirects to phpMyAdmin, but the phpMyAdmin login screen is shown instead of the gateway UI
 - `/_gateway`, `/_api`, and `/_signon.php` are redirected back to phpMyAdmin
 - phpMyAdmin uses `auth_type=cookie`
 - if `PMA_GATEWAY_PMA_HOST` is set, that host/port is used as the fixed login target
@@ -245,25 +251,25 @@ In Kubernetes, `dbUser` can come from a ConfigMap or Secret-backed env var, and 
 Authenticated APIs:
 
 ```http
-GET  /dbadmin/_api/v1/me
-GET  /dbadmin/_api/v1/available-credentials
-POST /dbadmin/_api/v1/pma/sessions
+GET  /_api/v1/me
+GET  /_api/v1/available-credentials
+POST /_api/v1/pma/sessions
 ```
 
 Admin APIs:
 
 ```http
-GET    /dbadmin/_api/v1/admin/credentials
-POST   /dbadmin/_api/v1/admin/credentials
-POST   /dbadmin/_api/v1/admin/credentials/test
-GET    /dbadmin/_api/v1/admin/credentials/:id
-PUT    /dbadmin/_api/v1/admin/credentials/:id
-DELETE /dbadmin/_api/v1/admin/credentials/:id
-GET    /dbadmin/_api/v1/admin/mappings
-POST   /dbadmin/_api/v1/admin/mappings
-DELETE /dbadmin/_api/v1/admin/mappings/:id
-GET    /dbadmin/_api/v1/admin/audit-events
-POST   /dbadmin/_api/v1/admin/audit-events/reset
+GET    /_api/v1/admin/credentials
+POST   /_api/v1/admin/credentials
+POST   /_api/v1/admin/credentials/test
+GET    /_api/v1/admin/credentials/:id
+PUT    /_api/v1/admin/credentials/:id
+DELETE /_api/v1/admin/credentials/:id
+GET    /_api/v1/admin/mappings
+POST   /_api/v1/admin/mappings
+DELETE /_api/v1/admin/mappings/:id
+GET    /_api/v1/admin/audit-events
+POST   /_api/v1/admin/audit-events/reset
 ```
 
 Internal API, intended only for the PHP bridge:
@@ -294,8 +300,8 @@ Probe endpoints:
 ```http
 GET /healthz
 GET /readyz
-GET /dbadmin/healthz
-GET /dbadmin/readyz
+GET /healthz
+GET /readyz
 ```
 
 `readyz` checks storage, migrations, and master-key readiness.
@@ -332,6 +338,13 @@ Writable paths:
 /var/lib/pma-gateway
 /tmp
 /tmp/php-sessions
+/tmp/php-conf.d
+/tmp/pma-gateway-www
+/tmp/nginx-client-body
+/tmp/nginx-proxy-temp
+/tmp/nginx-fastcgi-temp
+/tmp/nginx-uwsgi-temp
+/tmp/nginx-scgi-temp
 ```
 
 ## Kubernetes
@@ -360,12 +373,12 @@ Example probes:
 ```yaml
 livenessProbe:
   httpGet:
-    path: /dbadmin/healthz
+    path: /healthz
     port: http
 
 readinessProbe:
   httpGet:
-    path: /dbadmin/readyz
+    path: /readyz
     port: http
 ```
 

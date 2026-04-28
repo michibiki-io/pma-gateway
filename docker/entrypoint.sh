@@ -2,7 +2,7 @@
 set -eu
 
 normalize_public_base() {
-  value="${1:-/dbadmin}"
+  value="${1:-/}"
   value="$(printf '%s' "$value" | sed -e 's#//*#/#g' -e 's#/$##')"
   if [ "$value" = "/" ] || [ -z "$value" ]; then
     printf ''
@@ -65,7 +65,41 @@ is_truthy() {
   esac
 }
 
-export PMA_GATEWAY_PUBLIC_BASE_PATH="$(normalize_public_base "${PMA_GATEWAY_PUBLIC_BASE_PATH:-/dbadmin}")"
+regex_escape() {
+  printf '%s' "${1:-}" | sed -e 's/[][(){}.^$+*?|\\]/\\&/g'
+}
+
+fs_join() {
+  root="$1"
+  path="${2:-}"
+  path="${path#/}"
+  if [ -z "$path" ]; then
+    printf '%s' "$root"
+  else
+    printf '%s/%s' "$root" "$path"
+  fi
+}
+
+write_proxy_location() {
+  path="$1"
+  target="$2"
+  cat <<EOF
+    location = ${path} {
+        proxy_set_header Host \$http_host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-Host \$http_host;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Port \$server_port;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_connect_timeout ${NGINX_PROXY_CONNECT_TIMEOUT};
+        proxy_send_timeout ${NGINX_PROXY_SEND_TIMEOUT};
+        proxy_read_timeout ${NGINX_PROXY_READ_TIMEOUT};
+        proxy_pass http://127.0.0.1:8081${target};
+    }
+EOF
+}
+
+export PMA_GATEWAY_PUBLIC_BASE_PATH="$(normalize_public_base "${PMA_GATEWAY_PUBLIC_BASE_PATH:-/}")"
 export PMA_GATEWAY_PMA_PATH="$(normalize_subpath "${PMA_GATEWAY_PMA_PATH:-/_pma}")"
 export PMA_GATEWAY_FRONTEND_PATH="$(normalize_subpath "${PMA_GATEWAY_FRONTEND_PATH:-/_gateway}")"
 export PMA_GATEWAY_API_PATH="$(normalize_subpath "${PMA_GATEWAY_API_PATH:-/_api}")"
@@ -93,71 +127,195 @@ export SIGNON_URL="$SIGNON_RAW"
 export FRONTEND_CONFIG_PATH="${FRONTEND_BASE}config.js"
 export PUBLIC_HEALTH_PATH="$(join_path "$PMA_GATEWAY_PUBLIC_BASE_PATH" "/healthz")"
 export PUBLIC_READY_PATH="$(join_path "$PMA_GATEWAY_PUBLIC_BASE_PATH" "/readyz")"
+export PMA_BASE_NO_SLASH="${PMA_BASE%/}"
+export NGINX_CLIENT_MAX_BODY_SIZE="${PMA_GATEWAY_NGINX_CLIENT_MAX_BODY_SIZE:-0}"
+export NGINX_PROXY_CONNECT_TIMEOUT="${PMA_GATEWAY_NGINX_PROXY_CONNECT_TIMEOUT:-300s}"
+export NGINX_PROXY_READ_TIMEOUT="${PMA_GATEWAY_NGINX_PROXY_READ_TIMEOUT:-300s}"
+export NGINX_PROXY_SEND_TIMEOUT="${PMA_GATEWAY_NGINX_PROXY_SEND_TIMEOUT:-300s}"
+export NGINX_FASTCGI_READ_TIMEOUT="${PMA_GATEWAY_NGINX_FASTCGI_READ_TIMEOUT:-300s}"
+export NGINX_FASTCGI_SEND_TIMEOUT="${PMA_GATEWAY_NGINX_FASTCGI_SEND_TIMEOUT:-300s}"
+export PMA_BASE_REGEX="$(regex_escape "$PMA_BASE")"
 
 if [ -z "$PMA_GATEWAY_PUBLIC_BASE_PATH" ]; then
-  export PUBLIC_ENTRY_REGEX="^/$"
-  export ROOT_ENTRY_REDIRECT=""
+  ROOT_REDIRECT_BLOCK=$(cat <<EOF
+        location = / {
+            return 302 ${PMA_BASE};
+        }
+EOF
+)
+  PUBLIC_ENTRY_BLOCK=""
 else
-  export PUBLIC_ENTRY_REGEX="^${PMA_GATEWAY_PUBLIC_BASE_PATH}/?$"
-  export ROOT_ENTRY_REDIRECT="RedirectMatch 302 \"^/$\" \"${PMA_GATEWAY_PUBLIC_BASE_PATH}/\""
-fi
+  ROOT_REDIRECT_BLOCK=$(cat <<EOF
+        location = / {
+            return 302 ${PMA_GATEWAY_PUBLIC_BASE_PATH}/;
+        }
+EOF
+)
+  PUBLIC_ENTRY_BLOCK=$(cat <<EOF
+        location = ${PMA_GATEWAY_PUBLIC_BASE_PATH} {
+            return 302 ${PMA_BASE};
+        }
 
-mkdir -p /var/lib/pma-gateway /tmp/php-sessions /tmp/php-conf.d /tmp/apache2-run /tmp/apache2-lock
-chown -R www-data:www-data /var/lib/pma-gateway /tmp/php-sessions /tmp/php-conf.d /tmp/apache2-run /tmp/apache2-lock 2>/dev/null || true
-
-frontend_index=/opt/pma-gateway/frontend/index.html
-if [ -f "$frontend_index" ]; then
-  frontend_index_tmp="$(mktemp)"
-  awk -v base="$FRONTEND_BASE" '
-    /<base href=/ { next }
-    /<head>/ && !inserted {
-      print
-      print "    <base href=\"" base "\" />"
-      inserted = 1
-      next
-    }
-    { print }
-  ' "$frontend_index" > "$frontend_index_tmp"
-  mv "$frontend_index_tmp" "$frontend_index"
-  chmod 0644 "$frontend_index"
-  chown www-data:www-data "$frontend_index" 2>/dev/null || true
+        location = ${PMA_GATEWAY_PUBLIC_BASE_PATH}/ {
+            return 302 ${PMA_BASE};
+        }
+EOF
+)
 fi
+export ROOT_REDIRECT_BLOCK
+export PUBLIC_ENTRY_BLOCK
+
+PROBE_LOCATION_BLOCK=$(cat <<EOF
+$(write_proxy_location "/healthz" "/healthz")
+
+$(write_proxy_location "/readyz" "/readyz")
+EOF
+)
+if [ "$PUBLIC_HEALTH_PATH" != "/healthz" ]; then
+  PROBE_LOCATION_BLOCK="${PROBE_LOCATION_BLOCK}
+
+$(write_proxy_location "$PUBLIC_HEALTH_PATH" "$PUBLIC_HEALTH_PATH")"
+fi
+if [ "$PUBLIC_READY_PATH" != "/readyz" ]; then
+  PROBE_LOCATION_BLOCK="${PROBE_LOCATION_BLOCK}
+
+$(write_proxy_location "$PUBLIC_READY_PATH" "$PUBLIC_READY_PATH")"
+fi
+export PROBE_LOCATION_BLOCK
+
+web_root=/tmp/pma-gateway-www
+frontend_root="$(fs_join "$web_root" "${FRONTEND_BASE%/}")"
+pma_root="$(fs_join "$web_root" "$PMA_BASE_NO_SLASH")"
+signon_root="$(fs_join "$web_root" "$SIGNON_URL")"
+
+rm -rf "$web_root"
+mkdir -p \
+  /var/lib/pma-gateway \
+  /tmp/php-sessions \
+  /tmp/php-conf.d \
+  /tmp/nginx-client-body \
+  /tmp/nginx-proxy-temp \
+  /tmp/nginx-fastcgi-temp \
+  /tmp/nginx-uwsgi-temp \
+  /tmp/nginx-scgi-temp \
+  "$web_root" \
+  "$(dirname "$signon_root")"
+for log_file in \
+  /tmp/pma-gateway-backend.log \
+  /tmp/pma-gateway-backend.err \
+  /tmp/php-fpm.log \
+  /tmp/php-fpm.err \
+  /tmp/nginx.log \
+  /tmp/nginx.err
+do
+  : > "$log_file"
+done
+ln -sfn /opt/phpmyadmin "$pma_root"
+ln -sfn /opt/pma-gateway/php/pma-signon.php "$signon_root"
 
 if [ "$PMA_GATEWAY_ENABLED" = "true" ]; then
-  mkdir -p /opt/pma-gateway/frontend/admin
-  ln -sf index.html /opt/pma-gateway/frontend/account
-  ln -sf ../index.html /opt/pma-gateway/frontend/admin/credentials
-  ln -sf ../index.html /opt/pma-gateway/frontend/admin/mappings
-  ln -sf ../index.html /opt/pma-gateway/frontend/admin/audit
+  mkdir -p "$frontend_root"
+  cp -a /opt/pma-gateway/frontend/. "$frontend_root/"
+  frontend_index="${frontend_root}/index.html"
+  if [ -f "$frontend_index" ]; then
+    frontend_index_tmp="$(mktemp)"
+    awk -v base="$FRONTEND_BASE" '
+      /<base href=/ { next }
+      /<head>/ && !inserted {
+        print
+        print "    <base href=\"" base "\" />"
+        inserted = 1
+        next
+      }
+      { print }
+    ' "$frontend_index" > "$frontend_index_tmp"
+    mv "$frontend_index_tmp" "$frontend_index"
+    chmod 0644 "$frontend_index"
+  fi
 fi
+chown -R www-data:www-data \
+  /var/lib/pma-gateway \
+  /tmp/php-sessions \
+  /tmp/php-conf.d \
+  /tmp/nginx-client-body \
+  /tmp/nginx-proxy-temp \
+  /tmp/nginx-fastcgi-temp \
+  /tmp/nginx-uwsgi-temp \
+  /tmp/nginx-scgi-temp \
+  /tmp/pma-gateway-backend.log \
+  /tmp/pma-gateway-backend.err \
+  /tmp/php-fpm.log \
+  /tmp/php-fpm.err \
+  /tmp/nginx.log \
+  /tmp/nginx.err \
+  "$web_root" 2>/dev/null || true
 
 if [ "$PMA_GATEWAY_ENABLED" = "true" ]; then
   GATEWAY_ROUTE_BLOCK=$(cat <<EOF
-    ProxyPass "${FRONTEND_CONFIG_PATH}" "http://127.0.0.1:8081${FRONTEND_CONFIG_PATH}" retry=0
-    ProxyPassReverse "${FRONTEND_CONFIG_PATH}" "http://127.0.0.1:8081${FRONTEND_CONFIG_PATH}"
-    ProxyPass "${API_BASE}/" "http://127.0.0.1:8081${API_BASE}/" retry=0
-    ProxyPassReverse "${API_BASE}/" "http://127.0.0.1:8081${API_BASE}/"
+        $(write_proxy_location "$FRONTEND_CONFIG_PATH" "$FRONTEND_CONFIG_PATH")
 
-    Alias "${SIGNON_URL}" "/opt/pma-gateway/php/pma-signon.php"
-    <Files "pma-signon.php">
-        Require all granted
-    </Files>
+        location = ${FRONTEND_BASE%/} {
+            return 301 ${FRONTEND_BASE};
+        }
 
-    Alias "${FRONTEND_BASE}" "/opt/pma-gateway/frontend/"
-    <Directory "/opt/pma-gateway/frontend">
-        Options FollowSymLinks
-        AllowOverride None
-        DirectoryIndex index.html
-        FallbackResource ${FRONTEND_BASE}index.html
-        Require all granted
-    </Directory>
+        location ^~ ${FRONTEND_BASE} {
+            try_files \$uri \$uri/ ${FRONTEND_BASE}index.html;
+        }
+
+        location ^~ ${API_BASE}/ {
+            proxy_set_header Host \$http_host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-Host \$http_host;
+            proxy_set_header X-Forwarded-Proto \$scheme;
+            proxy_set_header X-Forwarded-Port \$server_port;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_connect_timeout ${NGINX_PROXY_CONNECT_TIMEOUT};
+            proxy_send_timeout ${NGINX_PROXY_SEND_TIMEOUT};
+            proxy_read_timeout ${NGINX_PROXY_READ_TIMEOUT};
+            proxy_pass http://127.0.0.1:8081;
+        }
+
+        location = ${SIGNON_URL} {
+            try_files \$uri =404;
+            include /etc/nginx/fastcgi_params;
+            fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+            fastcgi_param SCRIPT_NAME \$fastcgi_script_name;
+            fastcgi_param DOCUMENT_ROOT \$document_root;
+            fastcgi_param PATH_INFO "";
+            fastcgi_param QUERY_STRING \$query_string;
+            fastcgi_param REQUEST_METHOD \$request_method;
+            fastcgi_param CONTENT_TYPE \$content_type;
+            fastcgi_param CONTENT_LENGTH \$content_length;
+            fastcgi_param HTTP_PROXY "";
+            fastcgi_param HTTP_X_FORWARDED_PROTO \$http_x_forwarded_proto;
+            fastcgi_param HTTPS \$https if_not_empty;
+            fastcgi_read_timeout ${NGINX_FASTCGI_READ_TIMEOUT};
+            fastcgi_send_timeout ${NGINX_FASTCGI_SEND_TIMEOUT};
+            fastcgi_pass 127.0.0.1:9000;
+        }
 EOF
 )
 else
   GATEWAY_ROUTE_BLOCK=$(cat <<EOF
-    RedirectMatch 302 "^${FRONTEND_BASE%/}(/.*)?$" "${PMA_BASE}"
-    RedirectMatch 302 "^${API_BASE}(/.*)?$" "${PMA_BASE}"
-    RedirectMatch 302 "^${SIGNON_URL}$" "${PMA_BASE}"
+        location = ${FRONTEND_BASE%/} {
+            return 302 ${PMA_BASE};
+        }
+
+        location ^~ ${FRONTEND_BASE} {
+            return 302 ${PMA_BASE};
+        }
+
+        location = ${API_BASE} {
+            return 302 ${PMA_BASE};
+        }
+
+        location ^~ ${API_BASE}/ {
+            return 302 ${PMA_BASE};
+        }
+
+        location = ${SIGNON_URL} {
+            return 302 ${PMA_BASE};
+        }
 EOF
 )
 fi
@@ -204,11 +362,41 @@ else
     printf 'session.save_path="%s"\n' "${PHP_SESSION_SAVE_PATH:-/tmp/php-sessions}"
   } > /tmp/php-conf.d/pma-gateway-session.ini
 fi
-chown www-data:www-data /tmp/php-conf.d/pma-gateway-session.ini 2>/dev/null || true
 
-envsubst '${PUBLIC_HEALTH_PATH} ${PUBLIC_READY_PATH} ${ROOT_ENTRY_REDIRECT} ${PUBLIC_ENTRY_REGEX} ${PMA_BASE} ${GATEWAY_ROUTE_BLOCK}' \
-  < /opt/pma-gateway/apache-site.conf.template > /tmp/pma-gateway-apache.conf
-chown www-data:www-data /tmp/pma-gateway-apache.conf 2>/dev/null || true
+{
+  echo 'upload_tmp_dir=/tmp'
+  echo 'sys_temp_dir=/tmp'
+  echo 'expose_php=Off'
+  if [ -n "${PMA_GATEWAY_PHP_UPLOAD_MAX_FILESIZE:-}" ]; then
+    printf 'upload_max_filesize=%s\n' "${PMA_GATEWAY_PHP_UPLOAD_MAX_FILESIZE}"
+  fi
+  if [ -n "${PMA_GATEWAY_PHP_POST_MAX_SIZE:-}" ]; then
+    printf 'post_max_size=%s\n' "${PMA_GATEWAY_PHP_POST_MAX_SIZE}"
+  fi
+  if [ -n "${PMA_GATEWAY_PHP_MEMORY_LIMIT:-}" ]; then
+    printf 'memory_limit=%s\n' "${PMA_GATEWAY_PHP_MEMORY_LIMIT}"
+  fi
+  if [ -n "${PMA_GATEWAY_PHP_MAX_EXECUTION_TIME:-}" ]; then
+    printf 'max_execution_time=%s\n' "${PMA_GATEWAY_PHP_MAX_EXECUTION_TIME}"
+  fi
+  if [ -n "${PMA_GATEWAY_PHP_MAX_INPUT_TIME:-}" ]; then
+    printf 'max_input_time=%s\n' "${PMA_GATEWAY_PHP_MAX_INPUT_TIME}"
+  fi
+} > /tmp/php-conf.d/pma-gateway-runtime.ini
+chown www-data:www-data /tmp/php-conf.d/pma-gateway-session.ini 2>/dev/null || true
+chown www-data:www-data /tmp/php-conf.d/pma-gateway-runtime.ini 2>/dev/null || true
+
+envsubst '${NGINX_CLIENT_MAX_BODY_SIZE} ${NGINX_PROXY_CONNECT_TIMEOUT} ${NGINX_PROXY_READ_TIMEOUT} ${NGINX_PROXY_SEND_TIMEOUT} ${NGINX_FASTCGI_READ_TIMEOUT} ${NGINX_FASTCGI_SEND_TIMEOUT} ${ROOT_REDIRECT_BLOCK} ${PUBLIC_ENTRY_BLOCK} ${PROBE_LOCATION_BLOCK} ${GATEWAY_ROUTE_BLOCK} ${PMA_BASE} ${PMA_BASE_NO_SLASH} ${PMA_BASE_REGEX}' \
+  < /opt/pma-gateway/nginx.conf.template > /tmp/pma-gateway-nginx.conf
+chown www-data:www-data /tmp/pma-gateway-nginx.conf 2>/dev/null || true
+
+tail -q -n 0 -F \
+  /tmp/pma-gateway-backend.log \
+  /tmp/pma-gateway-backend.err \
+  /tmp/php-fpm.log \
+  /tmp/php-fpm.err \
+  /tmp/nginx.log \
+  /tmp/nginx.err &
 
 if [ "$(id -u)" = "0" ]; then
   exec gosu www-data supervisord -c /etc/supervisor/conf.d/pma-gateway.conf

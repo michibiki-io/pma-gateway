@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	defaultPublicBasePath           = "/dbadmin"
+	defaultPublicBasePath           = "/"
 	defaultPMAPath                  = "/_pma"
 	defaultFrontendPath             = "/_gateway"
 	defaultAPIPath                  = "/_api"

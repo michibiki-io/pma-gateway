@@ -11,11 +11,11 @@ export class ApiError extends Error {
 
 export function runtimeConfig() {
   const fallback = {
-    publicBasePath: import.meta.env.VITE_PMA_GATEWAY_PUBLIC_BASE_PATH || '/dbadmin',
-    frontendBase: import.meta.env.VITE_PMA_GATEWAY_FRONTEND_BASE || '/dbadmin/_gateway/',
-    apiBase: import.meta.env.VITE_API_BASE || '/dbadmin/_api/v1',
-    pmaBase: '/dbadmin/_pma/',
-    signonUrl: '/dbadmin/_signon.php',
+    publicBasePath: import.meta.env.VITE_PMA_GATEWAY_PUBLIC_BASE_PATH || '/',
+    frontendBase: import.meta.env.VITE_PMA_GATEWAY_FRONTEND_BASE || '/_gateway/',
+    apiBase: import.meta.env.VITE_API_BASE || '/_api/v1',
+    pmaBase: '/_pma/',
+    signonUrl: '/_signon.php',
     version: {
       appVersion: import.meta.env.VITE_PMA_GATEWAY_APP_VERSION || 'unknown',
       appDisplayVersion: import.meta.env.VITE_PMA_GATEWAY_APP_DISPLAY_VERSION || 'unknown',

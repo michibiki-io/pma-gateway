@@ -47,7 +47,7 @@ function pma_gateway_framing_mode(string $name, bool|string $fallback = false): 
 }
 
 function pma_gateway_public_base(): string {
-    $base = trim(pma_gateway_env('PMA_GATEWAY_PUBLIC_BASE_PATH', '/dbadmin'));
+    $base = trim(pma_gateway_env('PMA_GATEWAY_PUBLIC_BASE_PATH', '/'));
     if ($base === '' || $base === '/') {
         return '';
     }

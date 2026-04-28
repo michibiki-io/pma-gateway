@@ -5,6 +5,30 @@ import (
 	"testing"
 )
 
+func TestLoadDefaultsUseRootPublicBasePath(t *testing.T) {
+	t.Setenv("PMA_GATEWAY_DEV_INSECURE_EPHEMERAL_KEY", "true")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Paths.PublicBasePath; got != "" {
+		t.Fatalf("public base = %q", got)
+	}
+	if got := cfg.Paths.PublicEntryPath(); got != "/" {
+		t.Fatalf("entry path = %q", got)
+	}
+	if got := cfg.Paths.PMABasePath(); got != "/_pma/" {
+		t.Fatalf("pma path = %q", got)
+	}
+	if got := cfg.Paths.APIBasePath(); got != "/_api/v1" {
+		t.Fatalf("api path = %q", got)
+	}
+	if got := cfg.Paths.SignonURL(); got != "/_signon.php" {
+		t.Fatalf("signon path = %q", got)
+	}
+}
+
 func TestPathsGenerateSubpathSafeDefaults(t *testing.T) {
 	paths := Paths{
 		PublicBasePath: "/dbadmin",
