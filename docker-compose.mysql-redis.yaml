@@ -1,0 +1,48 @@
+services:
+  pma-gateway:
+    environment:
+      PMA_GATEWAY_DATABASE_DRIVER: mysql
+      PMA_GATEWAY_MYSQL_HOST: gateway-mysql
+      PMA_GATEWAY_MYSQL_PORT: "3306"
+      PMA_GATEWAY_MYSQL_DATABASE: pma_gateway
+      PMA_GATEWAY_MYSQL_USER: pma_gateway
+      PMA_GATEWAY_PHP_SESSION_STORE: redis
+      PMA_GATEWAY_REDIS_HOST: redis
+      PMA_GATEWAY_REDIS_PORT: "6379"
+      PMA_GATEWAY_REDIS_DATABASE: "0"
+      PMA_GATEWAY_REDIS_PREFIX: "pma-gateway:"
+    depends_on:
+      gateway-mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  gateway-mysql:
+    image: mysql:8.4
+    env_file:
+      - ./dev/.env
+    environment:
+      MYSQL_DATABASE: pma_gateway
+      MYSQL_USER: pma_gateway
+    volumes:
+      - gateway-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  gateway-mysql-data:
+  redis-data:

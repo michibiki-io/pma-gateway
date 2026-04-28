@@ -1,0 +1,34 @@
+<VirtualHost *:8080>
+    ServerName localhost
+    ServerAdmin noreply@example.invalid
+    DocumentRoot /opt/pma-gateway/empty
+
+    ErrorLog /proc/self/fd/2
+    CustomLog /proc/self/fd/1 combined
+
+    ProxyPreserveHost On
+    ProxyPass "/healthz" "http://127.0.0.1:8081/healthz" retry=0
+    ProxyPassReverse "/healthz" "http://127.0.0.1:8081/healthz"
+    ProxyPass "/readyz" "http://127.0.0.1:8081/readyz" retry=0
+    ProxyPassReverse "/readyz" "http://127.0.0.1:8081/readyz"
+    ProxyPass "${PUBLIC_HEALTH_PATH}" "http://127.0.0.1:8081${PUBLIC_HEALTH_PATH}" retry=0
+    ProxyPassReverse "${PUBLIC_HEALTH_PATH}" "http://127.0.0.1:8081${PUBLIC_HEALTH_PATH}"
+    ProxyPass "${PUBLIC_READY_PATH}" "http://127.0.0.1:8081${PUBLIC_READY_PATH}" retry=0
+    ProxyPassReverse "${PUBLIC_READY_PATH}" "http://127.0.0.1:8081${PUBLIC_READY_PATH}"
+    ${GATEWAY_ROUTE_BLOCK}
+
+    ${ROOT_ENTRY_REDIRECT}
+    RedirectMatch 302 "${PUBLIC_ENTRY_REGEX}" "${PMA_BASE}"
+
+    <Directory "/opt/pma-gateway/empty">
+        Require all denied
+    </Directory>
+
+    Alias "${PMA_BASE}" "/opt/phpmyadmin/"
+    <Directory "/opt/phpmyadmin">
+        Options FollowSymLinks
+        AllowOverride All
+        DirectoryIndex index.php
+        Require all granted
+    </Directory>
+</VirtualHost>

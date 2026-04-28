@@ -1,0 +1,34 @@
+# Local environment overrides
+dev/.env
+.env
+.env.local
+
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/dist/
+
+# Local backend scratch space
+backend/tmp/
+
+# Logs
+*.log
+
+# Editor / OS metadata
+.DS_Store
+.idea/
+*.swp
+*.swo
+
+# Environment variable files
+dev/.env
+dev/.env.local
+dev/.env.development
+dev/.env.production
+dev/.env.test
+dev/.env.*.local
+
+# Ignore CODEX.md
+CODEX.md
+
+# Ignore pycache and virtual environments
+**/__pycache__/**

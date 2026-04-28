@@ -1,0 +1,16 @@
+.git
+.github
+scripts/release
+CODEX.md
+dev
+deploy
+frontend/node_modules
+frontend/dist
+backend/tmp
+**/.DS_Store
+dev/.env
+dev/.env.local
+dev/.env.development
+dev/.env.production
+dev/.env.test
+dev/.env.*.local

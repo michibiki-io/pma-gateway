@@ -1,0 +1,107 @@
+<?php
+declare(strict_types=1);
+
+function pma_gateway_env(string $name, string $fallback = ''): string {
+    $value = getenv($name);
+    return $value === false || $value === '' ? $fallback : $value;
+}
+
+function pma_gateway_secret(string $valueName, string $fileName, string $fallback = ''): string {
+    $value = getenv($valueName);
+    $file = getenv($fileName);
+    if ($value !== false && $value !== '') {
+        return trim($value);
+    }
+    if ($file !== false && $file !== '' && is_readable($file)) {
+        return trim((string) file_get_contents($file));
+    }
+    return $fallback;
+}
+
+function pma_gateway_bool(string $name, bool $fallback = true): bool {
+    $value = getenv($name);
+    if ($value === false || $value === '') {
+        return $fallback;
+    }
+    return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes', 'on'], true);
+}
+
+function pma_gateway_public_base(): string {
+    $base = trim(pma_gateway_env('PMA_GATEWAY_PUBLIC_BASE_PATH', '/dbadmin'));
+    if ($base === '' || $base === '/') {
+        return '';
+    }
+    return '/' . trim($base, '/');
+}
+
+function pma_gateway_subpath(string $name, string $fallback): string {
+    $value = trim(pma_gateway_env($name, $fallback));
+    if ($value === '' || $value === '/') {
+        return '/';
+    }
+    return '/' . trim($value, '/');
+}
+
+function pma_gateway_join(string ...$parts): string {
+    $items = [];
+    foreach ($parts as $part) {
+        $part = trim($part, '/');
+        if ($part !== '') {
+            $items[] = $part;
+        }
+    }
+    return '/' . implode('/', $items);
+}
+
+$publicBase = pma_gateway_public_base();
+$frontendPath = pma_gateway_subpath('PMA_GATEWAY_FRONTEND_PATH', '/_gateway');
+$pmaPath = pma_gateway_subpath('PMA_GATEWAY_PMA_PATH', '/_pma');
+$frontendBase = rtrim(pma_gateway_join($publicBase, $frontendPath), '/') . '/';
+$pmaBase = rtrim(pma_gateway_join($publicBase, $pmaPath), '/') . '/';
+$cookiePath = $publicBase === '' ? '/' : $publicBase . '/';
+$gatewayEnabled = pma_gateway_bool('PMA_GATEWAY', true);
+$internalSecret = pma_gateway_secret('PMA_GATEWAY_INTERNAL_SHARED_SECRET', 'PMA_GATEWAY_INTERNAL_SHARED_SECRET_FILE');
+$loginCookieValidity = (int) pma_gateway_env('PMA_GATEWAY_PHPMYADMIN_LOGIN_COOKIE_VALIDITY', '3600');
+$manualHost = trim(pma_gateway_env('PMA_GATEWAY_PMA_HOST', ''));
+$manualPort = trim(pma_gateway_env('PMA_GATEWAY_PMA_PORT', ''));
+$allowArbitraryServer = pma_gateway_bool('PMA_GATEWAY_PMA_ALLOW_ARBITRARY_SERVER', $manualHost === '');
+$signonSecure = (! empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+    || strtolower($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
+if ($loginCookieValidity < 1) {
+    $loginCookieValidity = 3600;
+}
+
+$cfg['blowfish_secret'] = substr(hash('sha256', 'pma-gateway:' . $internalSecret), 0, 32);
+$cfg['LoginCookieValidity'] = $loginCookieValidity;
+$cfg['CookiePath'] = $cookiePath;
+ini_set('session.cookie_path', $cookiePath);
+
+$i = 1;
+$cfg['AllowArbitraryServer'] = $gatewayEnabled ? false : $allowArbitraryServer;
+$cfg['Servers'][$i]['auth_type'] = $gatewayEnabled ? 'signon' : 'cookie';
+if ($gatewayEnabled) {
+    $cfg['Servers'][$i]['SignonSession'] = 'PmaGatewaySignon';
+    $cfg['Servers'][$i]['SignonCookieParams'] = [
+        'lifetime' => 0,
+        'path' => $cookiePath,
+        'domain' => '',
+        'secure' => $signonSecure,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ];
+    $cfg['Servers'][$i]['SignonURL'] = $frontendBase;
+    $cfg['Servers'][$i]['LogoutURL'] = $frontendBase;
+    $cfg['Servers'][$i]['host'] = 'localhost';
+    $cfg['Servers'][$i]['port'] = '';
+} else {
+    if ($manualHost !== '') {
+        $cfg['Servers'][$i]['host'] = $manualHost;
+    }
+    if ($manualPort !== '') {
+        $cfg['Servers'][$i]['port'] = $manualPort;
+    }
+}
+$cfg['Servers'][$i]['compress'] = false;
+$cfg['Servers'][$i]['AllowNoPassword'] = false;
+
+unset($allowArbitraryServer, $internalSecret, $manualHost, $manualPort);
