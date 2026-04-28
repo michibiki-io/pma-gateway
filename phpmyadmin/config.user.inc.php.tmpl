@@ -26,6 +26,26 @@ function pma_gateway_bool(string $name, bool $fallback = true): bool {
     return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes', 'on'], true);
 }
 
+function pma_gateway_framing_mode(string $name, bool|string $fallback = false): bool|string {
+    $value = getenv($name);
+    if ($value === false || trim((string) $value) === '') {
+        return $fallback;
+    }
+
+    $normalized = strtolower(trim((string) $value));
+    if ($normalized === 'sameorigin') {
+        return 'sameorigin';
+    }
+    if (in_array($normalized, ['1', 'true', 'yes', 'on'], true)) {
+        return true;
+    }
+    if (in_array($normalized, ['0', 'false', 'no', 'off'], true)) {
+        return false;
+    }
+
+    return $fallback;
+}
+
 function pma_gateway_public_base(): string {
     $base = trim(pma_gateway_env('PMA_GATEWAY_PUBLIC_BASE_PATH', '/dbadmin'));
     if ($base === '' || $base === '/') {
@@ -65,6 +85,10 @@ $loginCookieValidity = (int) pma_gateway_env('PMA_GATEWAY_PHPMYADMIN_LOGIN_COOKI
 $manualHost = trim(pma_gateway_env('PMA_GATEWAY_PMA_HOST', ''));
 $manualPort = trim(pma_gateway_env('PMA_GATEWAY_PMA_PORT', ''));
 $allowArbitraryServer = pma_gateway_bool('PMA_GATEWAY_PMA_ALLOW_ARBITRARY_SERVER', $manualHost === '');
+$allowThirdPartyFraming = pma_gateway_framing_mode(
+    'PMA_GATEWAY_PHPMYADMIN_ALLOW_THIRD_PARTY_FRAMING',
+    'sameorigin'
+);
 $signonSecure = (! empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
     || strtolower($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
 if ($loginCookieValidity < 1) {
@@ -74,6 +98,7 @@ if ($loginCookieValidity < 1) {
 $cfg['blowfish_secret'] = substr(hash('sha256', 'pma-gateway:' . $internalSecret), 0, 32);
 $cfg['LoginCookieValidity'] = $loginCookieValidity;
 $cfg['CookiePath'] = $cookiePath;
+$cfg['AllowThirdPartyFraming'] = $allowThirdPartyFraming;
 ini_set('session.cookie_path', $cookiePath);
 
 $i = 1;

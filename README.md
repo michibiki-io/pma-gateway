@@ -72,6 +72,7 @@ PMA_GATEWAY_SIGNON_PATH=/_signon.php
 PMA_GATEWAY_PMA_HOST=
 PMA_GATEWAY_PMA_PORT=
 PMA_GATEWAY_PMA_ALLOW_ARBITRARY_SERVER=true
+PMA_GATEWAY_PHPMYADMIN_ALLOW_THIRD_PARTY_FRAMING=sameorigin
 PMA_GATEWAY_MASTER_KEY_BASE64=
 PMA_GATEWAY_MASTER_KEY_FILE=
 PMA_GATEWAY_INTERNAL_SHARED_SECRET=
@@ -103,6 +104,8 @@ PMA_GATEWAY_PHP_SESSION_GC_MAXLIFETIME=3600
 - phpMyAdmin uses `auth_type=cookie`
 - if `PMA_GATEWAY_PMA_HOST` is set, that host/port is used as the fixed login target
 - if `PMA_GATEWAY_PMA_HOST` is empty, `PMA_GATEWAY_PMA_ALLOW_ARBITRARY_SERVER=true` lets the user choose the server on the login screen
+
+`PMA_GATEWAY_PHPMYADMIN_ALLOW_THIRD_PARTY_FRAMING` controls the phpMyAdmin `X-Frame-Options` behavior. Supported values are `false`, `sameorigin`, and `true`. The default is `sameorigin`, which allows iframe embedding only from the same origin.
 
 Timestamp values returned by the gateway UI/API are formatted at response time with `PMA_GATEWAY_TIMESTAMP_FORMAT` and `PMA_GATEWAY_TIMESTAMP_TIMEZONE`. Stored values remain RFC3339 internally for ordering and filtering. The default display is `2001-01-01 10:00:00 JST`.
 
