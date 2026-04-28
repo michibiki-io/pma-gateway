@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pma-gateway
+  namespace: pma-gateway
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.middlewares: auth-forwardauth@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: dbadmin.example.com
+      http:
+        paths:
+          - path: /dbadmin
+            pathType: Prefix
+            backend:
+              service:
+                name: pma-gateway
+                port:
+                  name: http
+  tls:
+    - hosts:
+        - dbadmin.example.com
+      secretName: dbadmin-example-tls

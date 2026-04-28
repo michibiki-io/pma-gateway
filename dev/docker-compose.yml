@@ -1,0 +1,46 @@
+services:
+  pma-gateway:
+    build:
+      context: ..
+      args:
+        PHPMYADMIN_VERSION: "5.2.3"
+    env_file:
+      - ./.env
+    environment:
+      PMA_GATEWAY_BOOTSTRAP_CONFIG_FILE: /config/bootstrap.json
+    volumes:
+      - pma-gateway-data:/var/lib/pma-gateway
+      - ./bootstrap.json:/config/bootstrap.json:ro
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    expose:
+      - "8080"
+
+  dev-auth-proxy:
+    image: nginx:1.29-alpine
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - pma-gateway
+
+  mariadb:
+    image: mariadb:11.8
+    env_file:
+      - ./.env
+    environment:
+      MARIADB_DATABASE: sampledb
+    volumes:
+      - mariadb-data:/var/lib/mysql
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -uroot -p\"$$MARIADB_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  pma-gateway-data:
+  mariadb-data:

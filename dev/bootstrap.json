@@ -1,0 +1,51 @@
+{
+  "credentials": [
+    {
+      "id": "dev-root",
+      "name": "Development Root",
+      "dbHost": "mariadb",
+      "dbPort": 3306,
+      "dbUser": "env:PMA_GATEWAY_BOOTSTRAP_DEV_ROOT_DB_USER",
+      "dbPassword": "secret:PMA_GATEWAY_BOOTSTRAP_DEV_ROOT_DB_PASSWORD",
+      "description": "Root access to the local development database",
+      "enabled": true
+    },
+    {
+      "id": "dev-readonly",
+      "name": "Development Readonly",
+      "dbHost": "mariadb",
+      "dbPort": 3306,
+      "dbUser": "env:PMA_GATEWAY_BOOTSTRAP_DEV_READONLY_DB_USER",
+      "dbPassword": "secret:PMA_GATEWAY_BOOTSTRAP_DEV_READONLY_DB_PASSWORD",
+      "description": "Readonly access to sampledb",
+      "enabled": true
+    },
+    {
+      "id": "dev-admin",
+      "name": "Development Admin",
+      "dbHost": "mariadb",
+      "dbPort": 3306,
+      "dbUser": "env:PMA_GATEWAY_BOOTSTRAP_DEV_ADMIN_DB_USER",
+      "dbPassword": "secret:PMA_GATEWAY_BOOTSTRAP_DEV_ADMIN_DB_PASSWORD",
+      "description": "Administrative access to sampledb",
+      "enabled": true
+    }
+  ],
+  "mappings": [
+    {
+      "subjectType": "user",
+      "subject": "alice@example.com",
+      "credentialId": "dev-root"
+    },
+    {
+      "subjectType": "group",
+      "subject": "db-users",
+      "credentialId": "dev-readonly"
+    },
+    {
+      "subjectType": "group",
+      "subject": "db-admins",
+      "credentialId": "dev-admin"
+    }
+  ]
+}
