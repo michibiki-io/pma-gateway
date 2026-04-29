@@ -1,6 +1,6 @@
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import { expect, test, type Page, type Route, type TestInfo } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
   if (!isRealApp()) {
@@ -96,33 +96,86 @@ test('credential opens phpMyAdmin through the signon flow', async ({ page }, tes
 
 async function mockGatewayApi(page: Page) {
   await page.route('**/_api/v1/me', async (route) => {
-    await route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({
-        user: 'alice@example.com',
-        groups: ['db-users', 'db-admins'],
-        isAdmin: true,
-      }),
+    await fulfillJson(route, {
+      user: 'alice@example.com',
+      groups: ['db-users', 'db-admins'],
+      isAdmin: true,
     });
   });
 
   await page.route('**/_api/v1/available-credentials', async (route) => {
-    await route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({
-        items: [
-          {
-            id: 'sampledb-readonly',
-            name: 'Sample database',
-            description: 'Read-only access for smoke tests',
-            dbHost: 'mariadb',
-            dbPort: 3306,
-            dbUser: 'readonly',
-            enabled: true,
-          },
-        ],
-      }),
+    await fulfillJson(route, {
+      items: [mockCredential()],
     });
+  });
+
+  await page.route('**/_api/v1/admin/credentials', async (route) => {
+    await fulfillJson(route, {
+      items: [mockCredential()],
+    });
+  });
+
+  await page.route('**/_api/v1/admin/mappings', async (route) => {
+    await fulfillJson(route, {
+      items: [
+        {
+          id: 'mapping-1',
+          subjectType: 'group',
+          subject: 'db-admins',
+          credentialId: 'sampledb-readonly',
+        },
+      ],
+    });
+  });
+
+  await page.route('**/_api/v1/admin/audit-events/filter-options', async (route) => {
+    await fulfillJson(route, {
+      actions: ['credential.available.list', 'audit.view'],
+      targetTypes: ['credential', 'audit_event'],
+      actorSuggestions: ['alice@example.com'],
+    });
+  });
+
+  await page.route('**/_api/v1/admin/audit-events?*', async (route) => {
+    await fulfillJson(route, {
+      items: [
+        {
+          id: 'audit-1',
+          timestamp: '2026-04-30 10:00:00 JST',
+          actor: 'alice@example.com',
+          action: 'audit.view',
+          targetType: 'audit_event',
+          targetId: '',
+          result: 'success',
+          remoteAddress: '127.0.0.1',
+          message: 'Audit log view',
+          metadata: {},
+        },
+      ],
+      page: 1,
+      pageSize: 10,
+      totalItems: 1,
+      totalPages: 1,
+    });
+  });
+}
+
+function mockCredential() {
+  return {
+    id: 'sampledb-readonly',
+    name: 'Sample database',
+    description: 'Read-only access for smoke tests',
+    dbHost: 'mariadb',
+    dbPort: 3306,
+    dbUser: 'readonly',
+    enabled: true,
+  };
+}
+
+async function fulfillJson(route: Route, body: unknown) {
+  await route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(body),
   });
 }
 

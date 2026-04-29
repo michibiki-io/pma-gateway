@@ -129,7 +129,9 @@ jobs:
         if: steps.version.outputs.release_required == 'true'
         run: |
           set -euo pipefail
-          helm lint deploy/chart
+          helm lint deploy/chart \
+            --set secrets.PMA_GATEWAY_MASTER_KEY_BASE64=lint-master-key \
+            --set secrets.PMA_GATEWAY_INTERNAL_SHARED_SECRET=lint-internal-secret
 
       - name: Package Helm chart
         if: steps.version.outputs.release_required == 'true'
