@@ -1,0 +1,29 @@
+services:
+  pma-gateway:
+    environment:
+      PMA_GATEWAY: "true"
+      PMA_GATEWAY_PUBLIC_BASE_PATH: /pma
+
+  dev-auth-proxy:
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/pma/readyz | grep -q 'ready'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  e2e:
+    image: michibiki/playwright:v1.59.1-noble-jp
+    working_dir: /workspace/frontend
+    volumes:
+      - .:/workspace
+    environment:
+      CI: "true"
+      E2E_REAL_APP: "true"
+      E2E_SKIP_WEBSERVER: "true"
+      E2E_BASE_URL: http://dev-auth-proxy:8080
+      E2E_FRONTEND_PATH: /pma/_gateway/
+    depends_on:
+      dev-auth-proxy:
+        condition: service_healthy
+    command: >
+      sh -c "npm ci && npm run test:e2e"
