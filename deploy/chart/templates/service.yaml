@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pma-gateway.fullname" . }}
+  labels:
+    {{- include "pma-gateway.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  {{- if eq .Values.service.type "ExternalName" }}
+  externalName: {{ .Values.service.externalName | quote }}
+  {{- if .Values.service.port }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      protocol: TCP
+  {{- end }}
+  {{- else }}
+  selector:
+    {{- include "pma-gateway.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+  {{- end }}

@@ -444,6 +444,30 @@ readinessProbe:
 
 The example deployment uses `readOnlyRootFilesystem: true` with `/tmp` and `/var/lib/pma-gateway` mounted writable.
 
+A Helm chart is available in [deploy/chart](deploy/chart). Local install:
+
+```bash
+helm upgrade --install pma-gateway ./deploy/chart \
+  --namespace pma-gateway \
+  --create-namespace \
+  --set secrets.PMA_GATEWAY_MASTER_KEY_BASE64="$PMA_GATEWAY_MASTER_KEY_BASE64" \
+  --set secrets.PMA_GATEWAY_INTERNAL_SHARED_SECRET="$PMA_GATEWAY_INTERNAL_SHARED_SECRET"
+```
+
+OCI install from GHCR:
+
+```bash
+helm install pma-gateway \
+  oci://ghcr.io/michibiki-io/charts/pma-gateway \
+  --version 0.1.0 \
+  --namespace pma-gateway \
+  --create-namespace \
+  --set secrets.PMA_GATEWAY_MASTER_KEY_BASE64="$PMA_GATEWAY_MASTER_KEY_BASE64" \
+  --set secrets.PMA_GATEWAY_INTERNAL_SHARED_SECRET="$PMA_GATEWAY_INTERNAL_SHARED_SECRET"
+```
+
+The release workflow publishes the chart to GHCR with the same version as the container image release. If `image.tag` is left empty, the chart uses `.Chart.AppVersion`. The default chart values keep SQLite and local PHP sessions, so use a single replica with persistence enabled. For multiple replicas, switch to MySQL for gateway metadata and Redis for PHP sessions before enabling autoscaling or raising `replicaCount`.
+
 ### Verification
 
 Backend tests:
@@ -878,6 +902,30 @@ readinessProbe:
 ```
 
 example deployment では `readOnlyRootFilesystem: true` を使い、`/tmp` と `/var/lib/pma-gateway` を writable mount にしています。
+
+Helm chart は [deploy/chart](deploy/chart) にあります。ローカル install:
+
+```bash
+helm upgrade --install pma-gateway ./deploy/chart \
+  --namespace pma-gateway \
+  --create-namespace \
+  --set secrets.PMA_GATEWAY_MASTER_KEY_BASE64="$PMA_GATEWAY_MASTER_KEY_BASE64" \
+  --set secrets.PMA_GATEWAY_INTERNAL_SHARED_SECRET="$PMA_GATEWAY_INTERNAL_SHARED_SECRET"
+```
+
+GHCR 上の OCI chart から install:
+
+```bash
+helm install pma-gateway \
+  oci://ghcr.io/michibiki-io/charts/pma-gateway \
+  --version 0.1.0 \
+  --namespace pma-gateway \
+  --create-namespace \
+  --set secrets.PMA_GATEWAY_MASTER_KEY_BASE64="$PMA_GATEWAY_MASTER_KEY_BASE64" \
+  --set secrets.PMA_GATEWAY_INTERNAL_SHARED_SECRET="$PMA_GATEWAY_INTERNAL_SHARED_SECRET"
+```
+
+release workflow は container image と同じ version で chart を GHCR に publish します。`image.tag` を空のままにすると chart は `.Chart.AppVersion` を使います。default chart values は SQLite と local PHP session を前提にしているため、single replica + persistence 有効で使ってください。multi-replica や autoscaling を使う前に gateway metadata を MySQL、PHP session を Redis へ切り替える必要があります。
 
 ### 検証
 
