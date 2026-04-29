@@ -6,7 +6,7 @@ services:
 
   dev-auth-proxy:
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/pma/readyz | grep -q 'ready'"]
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/pma/readyz | grep -q '\"status\":\"ready\"'"]
       interval: 5s
       timeout: 5s
       retries: 30
