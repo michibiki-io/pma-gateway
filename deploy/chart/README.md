@@ -94,6 +94,16 @@ helm upgrade --install pma-gateway ./deploy/chart \
   --set existingSecret=pma-gateway-secret
 ```
 
+### ExternalName Service
+
+```bash
+helm upgrade --install pma-gateway ./deploy/chart \
+  --namespace pma-gateway \
+  --create-namespace \
+  --set service.type=ExternalName \
+  --set service.externalName=my.database.example.com
+```
+
 ### MySQL and Redis for Multi-Replica Deployments
 
 ```bash

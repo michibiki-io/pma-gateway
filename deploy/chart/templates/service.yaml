@@ -10,6 +10,15 @@ metadata:
   {{- end }}
 spec:
   type: {{ .Values.service.type }}
+  {{- if eq .Values.service.type "ExternalName" }}
+  externalName: {{ .Values.service.externalName | quote }}
+  {{- if .Values.service.port }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      protocol: TCP
+  {{- end }}
+  {{- else }}
   selector:
     {{- include "pma-gateway.selectorLabels" . | nindent 4 }}
   ports:
@@ -17,3 +26,4 @@ spec:
       port: {{ .Values.service.port }}
       targetPort: http
       protocol: TCP
+  {{- end }}

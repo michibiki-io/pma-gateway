@@ -94,17 +94,48 @@
           ]
         },
         "port": {
-          "type": "integer",
+          "type": [
+            "integer",
+            "null"
+          ],
           "minimum": 1,
           "maximum": 65535
+        },
+        "externalName": {
+          "type": "string"
         },
         "annotations": {
           "type": "object"
         }
       },
       "required": [
-        "type",
-        "port"
+        "type"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "ExternalName"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "externalName"
+            ],
+            "properties": {
+              "externalName": {
+                "minLength": 1
+              }
+            }
+          },
+          "else": {
+            "required": [
+              "port"
+            ]
+          }
+        }
       ]
     },
     "ingress": {
