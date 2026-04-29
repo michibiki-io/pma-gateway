@@ -121,6 +121,46 @@ jobs:
           provenance: mode=max
           sbom: true
 
+      - name: Set up Helm
+        if: steps.version.outputs.release_required == 'true'
+        uses: azure/setup-helm@v4
+
+      - name: Lint Helm chart
+        if: steps.version.outputs.release_required == 'true'
+        run: |
+          set -euo pipefail
+          helm lint deploy/chart
+
+      - name: Package Helm chart
+        if: steps.version.outputs.release_required == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p dist/charts
+
+          helm package deploy/chart \
+            --version "${{ steps.version.outputs.docker_tag }}" \
+            --app-version "${{ steps.version.outputs.docker_tag }}" \
+            --destination dist/charts
+
+      - name: Log in to GHCR for Helm
+        if: steps.version.outputs.release_required == 'true'
+        run: |
+          set -euo pipefail
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            helm registry login ghcr.io \
+              --username "${{ github.actor }}" \
+              --password-stdin
+
+      - name: Push Helm chart to GHCR
+        if: steps.version.outputs.release_required == 'true'
+        run: |
+          set -euo pipefail
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+
+          helm push \
+            "dist/charts/pma-gateway-${{ steps.version.outputs.docker_tag }}.tgz" \
+            "oci://ghcr.io/${owner}/charts"
+
       - name: Generate release notes
         if: steps.version.outputs.release_required == 'true'
         env:
@@ -141,3 +181,5 @@ jobs:
           target_commitish: ${{ env.MERGE_COMMIT_SHA }}
           body_path: release-notes.md
           generate_release_notes: false
+          files: |
+            dist/charts/*.tgz

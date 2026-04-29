@@ -1,0 +1,145 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/michibiki-io/pma-gateway
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  automount: false
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 33
+  runAsGroup: 33
+  fsGroup: 33
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: pma-gateway.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources: {}
+
+livenessProbe:
+  httpGet:
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5
+
+startupProbe: null
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: null
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+persistence:
+  enabled: true
+  existingClaim: ""
+  storageClassName: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+  annotations: {}
+
+config:
+  PMA_GATEWAY: "true"
+  PMA_GATEWAY_PUBLIC_BASE_PATH: "/"
+  PMA_GATEWAY_PMA_PATH: "/_pma"
+  PMA_GATEWAY_FRONTEND_PATH: "/_gateway"
+  PMA_GATEWAY_API_PATH: "/_api"
+  PMA_GATEWAY_SIGNON_PATH: "/_signon.php"
+  PMA_GATEWAY_PMA_HOST: ""
+  PMA_GATEWAY_PMA_PORT: ""
+  PMA_GATEWAY_PMA_ALLOW_ARBITRARY_SERVER: "true"
+  PMA_GATEWAY_PHPMYADMIN_ALLOW_THIRD_PARTY_FRAMING: "sameorigin"
+  PMA_GATEWAY_USER_HEADER: "Remote-User"
+  PMA_GATEWAY_GROUPS_HEADER: "Remote-Groups"
+  PMA_GATEWAY_GROUPS_SEPARATOR: ","
+  PMA_GATEWAY_ADMIN_USERS: ""
+  PMA_GATEWAY_ADMIN_GROUPS: "db-admins"
+  PMA_GATEWAY_TRUSTED_PROXY_CIDRS: "127.0.0.1/32,::1/128"
+  PMA_GATEWAY_TRUST_PROXY_HEADERS: "true"
+  PMA_GATEWAY_ALLOWED_ORIGINS: ""
+  PMA_GATEWAY_APPCHECK_MODE: "disabled"
+  PMA_GATEWAY_APPCHECK_VERIFIED_HEADER: "X-AppCheck-Verified"
+  PMA_GATEWAY_BOOTSTRAP_ENABLED: "false"
+  PMA_GATEWAY_BOOTSTRAP_MODE: "first-run"
+  PMA_GATEWAY_DATA_DIR: "/var/lib/pma-gateway"
+  PMA_GATEWAY_DATABASE_DRIVER: "sqlite"
+  PMA_GATEWAY_MYSQL_HOST: ""
+  PMA_GATEWAY_MYSQL_PORT: "3306"
+  PMA_GATEWAY_MYSQL_DATABASE: "pma_gateway"
+  PMA_GATEWAY_MYSQL_USER: "pma_gateway"
+  PMA_GATEWAY_PHP_SESSION_STORE: "files"
+  PMA_GATEWAY_REDIS_HOST: ""
+  PMA_GATEWAY_REDIS_PORT: "6379"
+  PMA_GATEWAY_REDIS_DATABASE: "0"
+  PMA_GATEWAY_REDIS_PREFIX: "pma-gateway:"
+  PMA_GATEWAY_REDIS_SESSION_LOCKING_ENABLED: "1"
+  PMA_GATEWAY_REDIS_SESSION_LOCK_RETRIES: "100"
+  PMA_GATEWAY_REDIS_SESSION_LOCK_WAIT_TIME: "50000"
+  PMA_GATEWAY_REDIS_SESSION_LOCK_EXPIRE: "30"
+  PMA_GATEWAY_SIGNON_TICKET_TTL_SECONDS: "60"
+  PMA_GATEWAY_CREDENTIAL_TEST_TIMEOUT_SECONDS: "10"
+  PMA_GATEWAY_TIMESTAMP_FORMAT: "2006-01-02 15:04:05 MST"
+  PMA_GATEWAY_TIMESTAMP_TIMEZONE: "Asia/Tokyo"
+  PMA_GATEWAY_PHPMYADMIN_LOGIN_COOKIE_VALIDITY: "3600"
+  PMA_GATEWAY_PHP_SESSION_GC_MAXLIFETIME: "3600"
+  PMA_GATEWAY_PHP_UPLOAD_MAX_FILESIZE: ""
+  PMA_GATEWAY_PHP_POST_MAX_SIZE: ""
+  PMA_GATEWAY_PHP_MEMORY_LIMIT: ""
+  PMA_GATEWAY_PHP_MAX_EXECUTION_TIME: ""
+  PMA_GATEWAY_PHP_MAX_INPUT_TIME: ""
+
+secrets:
+  PMA_GATEWAY_MASTER_KEY_BASE64: ""
+  PMA_GATEWAY_INTERNAL_SHARED_SECRET: ""
+  PMA_GATEWAY_BOOTSTRAP_CONFIG_JSON: ""
+  PMA_GATEWAY_DATABASE_DSN: ""
+  PMA_GATEWAY_MYSQL_PASSWORD: ""
+  PMA_GATEWAY_REDIS_SESSION_URL: ""
+  PMA_GATEWAY_REDIS_PASSWORD: ""
+
+existingSecret: ""

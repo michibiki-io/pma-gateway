@@ -1,0 +1,17 @@
+apiVersion: v2
+name: pma-gateway
+description: Helm chart for deploying the pma-gateway phpMyAdmin access gateway
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/michibiki-io/pma-gateway
+sources:
+  - https://github.com/michibiki-io/pma-gateway
+keywords:
+  - phpmyadmin
+  - gateway
+  - mysql
+  - kubernetes
+maintainers:
+  - name: michibiki-io
+    url: https://github.com/michibiki-io
