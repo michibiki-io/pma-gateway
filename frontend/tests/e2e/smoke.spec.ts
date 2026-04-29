@@ -86,7 +86,8 @@ test('credential opens phpMyAdmin through the signon flow', async ({ page }, tes
     .getByRole('button', { name: /Open phpMyAdmin using Development Readonly/ })
     .click();
 
-  await page.waitForURL(/\/pma\/_pma\/.*/, { timeout: 30_000 });
+  const pmaBase = pmaPath('/');
+  await page.waitForURL((url) => url.pathname.startsWith(pmaBase), { timeout: 30_000 });
   await expectUsablePage(page, { checkHorizontalOverflow: false });
   await expect(page.locator('body')).toContainText(/phpMyAdmin/i, { timeout: 15_000 });
 
@@ -130,10 +131,25 @@ function isRealApp() {
 }
 
 function frontendPath(relativePath: string) {
-  const base = process.env.E2E_FRONTEND_PATH ?? '/';
-  const normalizedBase = base.endsWith('/') ? base : `${base}/`;
+  return joinBasePath(process.env.E2E_FRONTEND_PATH ?? '/', relativePath);
+}
+
+function pmaPath(relativePath: string) {
+  const frontendBase = normalizeBasePath(process.env.E2E_FRONTEND_PATH ?? '/');
+  const pmaBase = frontendBase.endsWith('/_gateway/')
+    ? `${frontendBase.slice(0, -'_gateway/'.length)}_pma/`
+    : '/_pma/';
+  return joinBasePath(pmaBase, relativePath);
+}
+
+function joinBasePath(basePath: string, relativePath: string) {
+  const normalizedBase = normalizeBasePath(basePath);
   const normalizedRelative = relativePath.replace(/^\/+/, '');
   return `${normalizedBase}${normalizedRelative}`;
+}
+
+function normalizeBasePath(basePath: string) {
+  return basePath.endsWith('/') ? basePath : `${basePath}/`;
 }
 
 function credentialHeading(page: Page) {
