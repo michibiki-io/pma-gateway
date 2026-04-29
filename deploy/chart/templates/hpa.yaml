@@ -1,4 +1,6 @@
 {{- if .Values.autoscaling.enabled }}
+{{- $hasCpuMetric := not (empty .Values.autoscaling.targetCPUUtilizationPercentage) }}
+{{- $hasMemoryMetric := not (empty .Values.autoscaling.targetMemoryUtilizationPercentage) }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -12,8 +14,9 @@ spec:
     name: {{ include "pma-gateway.fullname" . }}
   minReplicas: {{ .Values.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  {{- if or $hasCpuMetric $hasMemoryMetric }}
   metrics:
-    {{- if .Values.autoscaling.targetCPUUtilizationPercentage }}
+    {{- if $hasCpuMetric }}
     - type: Resource
       resource:
         name: cpu
@@ -21,7 +24,7 @@ spec:
           type: Utilization
           averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
     {{- end }}
-    {{- if .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- if $hasMemoryMetric }}
     - type: Resource
       resource:
         name: memory
@@ -29,4 +32,5 @@ spec:
           type: Utilization
           averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
     {{- end }}
+  {{- end }}
 {{- end }}
