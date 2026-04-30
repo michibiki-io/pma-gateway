@@ -192,6 +192,7 @@ rm -rf "$web_root"
 mkdir -p \
   /var/lib/pma-gateway \
   /tmp/php-sessions \
+  /tmp/phpmyadmin-tmp \
   /tmp/php-conf.d \
   /tmp/nginx-client-body \
   /tmp/nginx-proxy-temp \
@@ -236,6 +237,7 @@ fi
 chown -R www-data:www-data \
   /var/lib/pma-gateway \
   /tmp/php-sessions \
+  /tmp/phpmyadmin-tmp \
   /tmp/php-conf.d \
   /tmp/nginx-client-body \
   /tmp/nginx-proxy-temp \

@@ -99,6 +99,7 @@ $cfg['blowfish_secret'] = substr(hash('sha256', 'pma-gateway:' . $internalSecret
 $cfg['LoginCookieValidity'] = $loginCookieValidity;
 $cfg['CookiePath'] = $cookiePath;
 $cfg['AllowThirdPartyFraming'] = $allowThirdPartyFraming;
+$cfg['TempDir'] = '/tmp/phpmyadmin-tmp';
 ini_set('session.cookie_path', $cookiePath);
 
 $i = 1;
