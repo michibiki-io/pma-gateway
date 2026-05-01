@@ -102,6 +102,8 @@ export default {
   dashboard: {
     empty: "No credentials are available for your account.",
     openCredentialAria: "Open phpMyAdmin using {name}",
+    openingCredential: "Opening phpMyAdmin with {name}",
+    openingGeneric: "Connecting to phpMyAdmin",
   },
   account: {
     title: "Account",

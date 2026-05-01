@@ -71,6 +71,8 @@
   let auditFilters = blankAuditFilters();
   let loading = true;
   let saving = false;
+  let sessionStarting = false;
+  let openingCredentialId = "";
   let error = null;
   let authRecoveryError = null;
   let toast = "";
@@ -214,6 +216,8 @@
 
   async function startSession(id) {
     saving = true;
+    sessionStarting = true;
+    openingCredentialId = id;
     error = null;
     try {
       const body = await apiRequest(config, "/pma/sessions", {
@@ -222,8 +226,9 @@
       });
       window.location.assign(body.redirectUrl);
     } catch (err) {
+      sessionStarting = false;
+      openingCredentialId = "";
       setTranslatedError(err);
-    } finally {
       saving = false;
     }
   }
@@ -596,6 +601,11 @@
       return $_("common.unknown");
     }
     return `v${appVersion}`;
+  }
+
+  function openingCredentialName() {
+    const current = credentials.find((item) => item.id === openingCredentialId);
+    return current?.name || "";
   }
 
   $: aboutItems = [
@@ -984,7 +994,11 @@
   }
 </script>
 
-<div class:sidebar-collapsed={sidebarCollapsed} class="app-shell">
+<div
+  class:sidebar-collapsed={sidebarCollapsed}
+  class="app-shell"
+  aria-busy={sessionStarting ? "true" : "false"}
+>
   <aside
     class:collapsed={sidebarCollapsed}
     class:open={mobileMenuOpen}
@@ -1267,7 +1281,7 @@
             <button
               type="button"
               class="credential-card"
-              disabled={saving}
+              disabled={saving || sessionStarting}
               aria-label={$_("dashboard.openCredentialAria", {
                 values: { name: item.name },
               })}
@@ -1780,6 +1794,24 @@
     </section>
   </main>
 </div>
+
+{#if sessionStarting}
+  <div class="loading-backdrop" role="status" aria-live="polite" aria-atomic="true">
+    <div class="loading-panel">
+      <i class="fa-solid fa-spinner fa-spin loading-panel-icon" aria-hidden="true"></i>
+      <div class="loading-panel-title">{$_("common.opening")}</div>
+      <div class="loading-panel-message">
+        {#if openingCredentialName()}
+          {$_("dashboard.openingCredential", {
+            values: { name: openingCredentialName() },
+          })}
+        {:else}
+          {$_("dashboard.openingGeneric")}
+        {/if}
+      </div>
+    </div>
+  </div>
+{/if}
 
 {#if toast}
   <button type="button" class="toast text-left" on:click={() => (toast = "")}
