@@ -22,6 +22,13 @@ export default {
     administrationTitle: "Administration",
     loadingUser: "Loading",
   },
+  authRecovery: {
+    title: "Authentication state needs refresh",
+    message:
+      "Authentication details may still be settling. Refresh the authentication state and reload this page.",
+    refreshButton: "Refresh authentication",
+    userUnavailable: "Authentication needed",
+  },
   common: {
     loading: "Loading...",
     unknown: "Unknown",

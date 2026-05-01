@@ -7,7 +7,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "check": "vite build",
-    "test:unit": "node --test src/lib/text.test.js src/lib/audit-log.test.js",
+    "test:unit": "node --test src/lib/text.test.js src/lib/audit-log.test.js src/lib/api.test.js",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:ui": "playwright test --ui",

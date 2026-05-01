@@ -22,6 +22,13 @@ export default {
     administrationTitle: "管理",
     loadingUser: "読み込み中",
   },
+  authRecovery: {
+    title: "認証状態を確認できません",
+    message:
+      "認証情報の反映が遅れている可能性があります。認証状態を更新して再読み込みしてください。",
+    refreshButton: "認証状態を更新",
+    userUnavailable: "認証確認が必要",
+  },
   common: {
     loading: "読み込み中...",
     unknown: "不明",

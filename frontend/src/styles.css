@@ -1303,6 +1303,18 @@ th {
   box-shadow: 0 0 0 3px var(--focus-ring-shadow);
 }
 
+.user-summary:disabled {
+  cursor: default;
+  color: var(--text-secondary);
+}
+
+.user-summary:disabled:hover,
+.user-summary:disabled:focus-visible {
+  background: transparent;
+  color: var(--text-secondary);
+  box-shadow: none;
+}
+
 .user-summary i {
   color: var(--text-muted);
 }

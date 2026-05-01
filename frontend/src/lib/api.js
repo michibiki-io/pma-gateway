@@ -9,6 +9,19 @@ export class ApiError extends Error {
   }
 }
 
+export class RecoverableAuthError extends ApiError {
+  constructor(message, status, body, path) {
+    super(message, status, body);
+    this.name = 'RecoverableAuthError';
+    this.path = path;
+    this.recoverableAuth = true;
+  }
+}
+
+const RECOVERABLE_AUTH_PATHS = new Set(['/me', '/available-credentials']);
+const RECOVERABLE_AUTH_STATUSES = new Set([401, 403]);
+const DEFAULT_AUTH_RETRY_DELAYS_MS = [500, 1500];
+
 export function runtimeConfig() {
   const fallback = {
     publicBasePath: import.meta.env.VITE_PMA_GATEWAY_PUBLIC_BASE_PATH || '/',
@@ -75,6 +88,45 @@ export async function apiRequest(config, path, options = {}) {
     throw new ApiError(body?.error || '', response.status, body);
   }
   return body;
+}
+
+export async function apiRequestWithAuthRecovery(config, path, options = {}) {
+  const delays = options.authRetryDelaysMs || DEFAULT_AUTH_RETRY_DELAYS_MS;
+  const requestOptions = { ...options };
+  delete requestOptions.authRetryDelaysMs;
+
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await apiRequest(config, path, requestOptions);
+    } catch (err) {
+      if (!isRetryableAuthFailure(path, err)) {
+        throw err;
+      }
+      if (attempt >= delays.length) {
+        throw new RecoverableAuthError(err.message, err.status, err.body, path);
+      }
+      await delay(delays[attempt]);
+    }
+  }
+}
+
+export function isRecoverableAuthError(err) {
+  return Boolean(err?.recoverableAuth);
+}
+
+function isRetryableAuthFailure(path, err) {
+  return (
+    RECOVERABLE_AUTH_PATHS.has(pathWithoutQuery(path)) &&
+    RECOVERABLE_AUTH_STATUSES.has(err?.status)
+  );
+}
+
+function pathWithoutQuery(path) {
+  return String(path || '').split('?')[0];
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function withTrailingSlash(value) {
