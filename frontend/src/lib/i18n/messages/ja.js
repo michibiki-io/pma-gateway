@@ -102,6 +102,8 @@ export default {
   dashboard: {
     empty: "このアカウントに利用可能な接続情報はありません。",
     openCredentialAria: "{name} を使って phpMyAdmin を開く",
+    openingCredential: "{name} で phpMyAdmin を開いています",
+    openingGeneric: "phpMyAdmin に接続しています",
   },
   account: {
     title: "アカウント",

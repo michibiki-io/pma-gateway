@@ -1473,6 +1473,42 @@ th {
   box-shadow: var(--dropdown-shadow);
 }
 
+.loading-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--backdrop-bg);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  z-index: 30;
+}
+
+.loading-panel {
+  width: min(28rem, 100%);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  box-shadow: var(--dropdown-shadow);
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.loading-panel-icon {
+  font-size: 1.5rem;
+  color: var(--accent-strong);
+}
+
+.loading-panel-title {
+  margin-top: 0.75rem;
+  font-weight: 700;
+}
+
+.loading-panel-message {
+  margin-top: 0.5rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
