@@ -2,7 +2,12 @@
   import { onMount } from "svelte";
   import panelLeftContractIcon from "@fluentui/svg-icons/icons/panel_left_contract_20_regular.svg?raw";
   import panelLeftExpandIcon from "@fluentui/svg-icons/icons/panel_left_expand_20_regular.svg?raw";
-  import { apiRequest, runtimeConfig } from "./lib/api.js";
+  import {
+    apiRequest,
+    apiRequestWithAuthRecovery,
+    isRecoverableAuthError,
+    runtimeConfig,
+  } from "./lib/api.js";
   import AuditLogList from "./lib/AuditLogList.svelte";
   import CredentialTable from "./lib/CredentialTable.svelte";
   import KeyValueList from "./lib/KeyValueList.svelte";
@@ -67,6 +72,7 @@
   let loading = true;
   let saving = false;
   let error = null;
+  let authRecoveryError = null;
   let toast = "";
   let credentialForm = blankCredential();
   let credentialFieldErrors = blankCredentialFieldErrors();
@@ -81,6 +87,8 @@
   let resetBusy = false;
   let deleteDialog = null;
   let deleteBusy = false;
+
+  $: routeReady = !loading && !authRecoveryError;
 
   onMount(() => {
     sidebarCollapsed = readSidebarCollapsed();
@@ -122,11 +130,13 @@
 
   async function loadInitial() {
     loading = true;
+    error = null;
+    authRecoveryError = null;
     try {
-      me = await apiRequest(config, "/me");
+      me = await apiRequestWithAuthRecovery(config, "/me");
       await loadRoute();
     } catch (err) {
-      setTranslatedError(err);
+      setTopLevelLoadError(err);
     } finally {
       loading = false;
     }
@@ -134,6 +144,7 @@
 
   async function loadRoute() {
     error = null;
+    authRecoveryError = null;
     if (!me) {
       return;
     }
@@ -148,12 +159,15 @@
         await Promise.all([loadAuditMetadata(), loadAudit(1)]);
       }
     } catch (err) {
-      setTranslatedError(err);
+      setTopLevelLoadError(err);
     }
   }
 
   async function loadAvailableCredentials() {
-    const body = await apiRequest(config, "/available-credentials");
+    const body = await apiRequestWithAuthRecovery(
+      config,
+      "/available-credentials",
+    );
     credentials = body.items || [];
   }
 
@@ -513,6 +527,23 @@
   function selectTheme(mode) {
     setThemeMode(mode);
     themeMenuOpen = false;
+  }
+
+  function refreshAuthentication() {
+    window.location.reload();
+  }
+
+  function userSummaryLabel() {
+    if (me?.user) {
+      return me.user;
+    }
+    if (loading) {
+      return $_("topbar.loadingUser");
+    }
+    if (authRecoveryError) {
+      return $_("authRecovery.userUnavailable");
+    }
+    return $_("common.unknown");
   }
 
   function navIcon(routeName) {
@@ -888,6 +919,18 @@
     };
   }
 
+  function setTopLevelLoadError(err) {
+    if (isRecoverableAuthError(err)) {
+      authRecoveryError = {
+        message: err?.message ?? "",
+        status: err?.status ?? 0,
+      };
+      error = null;
+      return;
+    }
+    setTranslatedError(err);
+  }
+
   function subjectTypeKey(subjectType) {
     return `common.subjectType.${subjectType}`;
   }
@@ -1143,11 +1186,12 @@
           type="button"
           class:active={route === ROUTES.ACCOUNT}
           class="user-summary"
+          disabled={!me}
           aria-label={$_("account.open")}
           on:click={() => navigate(ROUTES.ACCOUNT)}
         >
           <i class="fa-solid fa-user" aria-hidden="true"></i>
-          <span>{me?.user || $_("topbar.loadingUser")}</span>
+          <span>{userSummaryLabel()}</span>
         </button>
       </div>
     </header>
@@ -1156,6 +1200,27 @@
       {#if loading}
         <div class="panel">
           <div class="panel-body">{$_("common.loading")}</div>
+        </div>
+      {:else if authRecoveryError}
+        <div class="alert alert--warning mb-4" role="alert">
+          <div class="alert-icon">
+            <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+          </div>
+          <div class="alert-body">
+            <div class="alert-label">{$_("authRecovery.title")}</div>
+            <div class="alert-message">
+              {$_("authRecovery.message")}
+            </div>
+            <div class="actions mt-2">
+              <button
+                type="button"
+                class="button secondary"
+                on:click={refreshAuthentication}
+              >
+                {$_("authRecovery.refreshButton")}
+              </button>
+            </div>
+          </div>
         </div>
       {:else if error}
         <div class="alert alert--error mb-4" role="alert">
@@ -1171,7 +1236,7 @@
         </div>
       {/if}
 
-      {#if !loading && route === ROUTES.DASHBOARD}
+      {#if routeReady && route === ROUTES.DASHBOARD}
         <div class="grid-list">
           {#each credentials as item}
             <button
@@ -1213,7 +1278,7 @@
         </div>
       {/if}
 
-      {#if !loading && route === ROUTES.ACCOUNT}
+      {#if routeReady && route === ROUTES.ACCOUNT}
         <div class="panel">
           <div class="panel-header">
             <h2 class="font-semibold">{$_("account.title")}</h2>
@@ -1254,7 +1319,7 @@
         </div>
       {/if}
 
-      {#if !loading && route === ROUTES.ADMIN_CREDENTIALS && me?.isAdmin}
+      {#if routeReady && route === ROUTES.ADMIN_CREDENTIALS && me?.isAdmin}
         <div class="panel mb-4">
           <div class="panel-header">
             <h2 class="font-semibold">
@@ -1486,7 +1551,7 @@
         />
       {/if}
 
-      {#if !loading && route === ROUTES.ADMIN_MAPPINGS && me?.isAdmin}
+      {#if routeReady && route === ROUTES.ADMIN_MAPPINGS && me?.isAdmin}
         <div class="panel mb-4">
           <div class="panel-header">
             <h2 class="font-semibold">{$_("mappingForm.createTitle")}</h2>
@@ -1583,7 +1648,7 @@
         />
       {/if}
 
-      {#if !loading && route === ROUTES.ADMIN_AUDIT && me?.isAdmin}
+      {#if routeReady && route === ROUTES.ADMIN_AUDIT && me?.isAdmin}
         <div class="panel mb-4">
           <div class="panel-header">
             <h2 class="font-semibold">{$_("audit.title")}</h2>

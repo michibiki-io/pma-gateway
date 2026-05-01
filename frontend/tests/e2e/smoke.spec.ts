@@ -19,6 +19,26 @@ test('top page renders without layout failure', async ({ page }, testInfo) => {
   await saveScreenScreenshot(page, testInfo, 'top-page');
 });
 
+test('recovers when /me initially returns a transient auth failure', async ({ page }) => {
+  const requestCount = await injectTransientAuthFailure(page, '/me');
+
+  await page.goto(frontendPath('/'));
+
+  await expect(page).toHaveTitle(/pma-gateway/i);
+  await expect(credentialHeading(page)).toBeVisible({ timeout: 10_000 });
+  expect(requestCount()).toBeGreaterThanOrEqual(2);
+});
+
+test('recovers when /available-credentials initially returns a transient auth failure', async ({ page }) => {
+  const requestCount = await injectTransientAuthFailure(page, '/available-credentials');
+
+  await page.goto(frontendPath('/'));
+
+  await expect(page.getByText('Available credentials')).toBeVisible();
+  await expect(credentialHeading(page)).toBeVisible({ timeout: 10_000 });
+  expect(requestCount()).toBeGreaterThanOrEqual(2);
+});
+
 test('account navigation works', async ({ page }, testInfo) => {
   await page.goto(frontendPath('/'));
 
@@ -177,6 +197,23 @@ async function fulfillJson(route: Route, body: unknown) {
     contentType: 'application/json',
     body: JSON.stringify(body),
   });
+}
+
+async function injectTransientAuthFailure(page: Page, apiPath: string) {
+  let requestCount = 0;
+  await page.route(`**/_api/v1${apiPath}`, async (route) => {
+    requestCount += 1;
+    if (requestCount === 1) {
+      await route.fulfill({
+        status: 403,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'authenticated identity required' }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+  return () => requestCount;
 }
 
 function isRealApp() {
