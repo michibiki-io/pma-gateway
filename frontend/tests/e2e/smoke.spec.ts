@@ -15,6 +15,7 @@ test('top page renders without layout failure', async ({ page }, testInfo) => {
   await expectUsablePage(page);
   await expect(page.getByText('Available credentials')).toBeVisible();
   await expect(credentialHeading(page)).toBeVisible();
+  await expectUserSummary(page);
 
   await saveScreenScreenshot(page, testInfo, 'top-page');
 });
@@ -39,6 +40,22 @@ test('recovers when /available-credentials initially returns a transient auth fa
   expect(requestCount()).toBeGreaterThanOrEqual(2);
 });
 
+test('does not leave the user summary loading when /me omits the user field', async ({ page }) => {
+  await page.unroute('**/_api/v1/me');
+  await page.route('**/_api/v1/me', async (route) => {
+    await fulfillJson(route, {
+      groups: ['db-users', 'db-admins'],
+      isAdmin: true,
+    });
+  });
+
+  await page.goto(frontendPath('/'));
+
+  await expect(credentialHeading(page)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open account view' })).toContainText('Unknown');
+  await expect(page.getByText('Loading', { exact: true })).toHaveCount(0);
+});
+
 test('account navigation works', async ({ page }, testInfo) => {
   await page.goto(frontendPath('/'));
 
@@ -48,6 +65,7 @@ test('account navigation works', async ({ page }, testInfo) => {
   await expectUsablePage(page);
   await expect(page.getByRole('heading', { name: 'Account' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'User' })).toBeVisible();
+  await expectUserSummary(page);
   await expect(page.getByText('2 groups')).toBeVisible();
 
   await saveScreenScreenshot(page, testInfo, 'account');
@@ -248,6 +266,12 @@ function credentialHeading(page: Page) {
       ? /Development (Root|Readonly|Admin)/
       : 'Sample database',
   }).first();
+}
+
+async function expectUserSummary(page: Page) {
+  const userSummary = page.getByRole('button', { name: 'Open account view' });
+  await expect(userSummary).toContainText(isRealApp() ? /alice@example.com|bob@example.com/ : 'alice@example.com');
+  await expect(userSummary).not.toContainText('Loading');
 }
 
 async function openMobileMenuIfNeeded(page: Page) {

@@ -533,17 +533,42 @@
     window.location.reload();
   }
 
-  function userSummaryLabel() {
-    if (me?.user) {
-      return me.user;
+  function userSummaryLabel(
+    identity,
+    isLoading,
+    recoverableAuthError,
+    translate,
+  ) {
+    const user = identityUser(identity);
+    if (user) {
+      return user;
     }
-    if (loading) {
-      return $_("topbar.loadingUser");
+    if (isLoading) {
+      return translate("topbar.loadingUser");
     }
-    if (authRecoveryError) {
-      return $_("authRecovery.userUnavailable");
+    if (recoverableAuthError) {
+      return translate("authRecovery.userUnavailable");
     }
-    return $_("common.unknown");
+    return translate("common.unknown");
+  }
+
+  function identityUser(identity) {
+    const candidates = [
+      identity?.user,
+      identity?.username,
+      identity?.email,
+      identity?.name,
+      identity?.preferredUsername,
+      identity?.preferred_username,
+    ];
+    for (const candidate of candidates) {
+      const normalized =
+        typeof candidate === "string" ? candidate.trim() : "";
+      if (normalized) {
+        return normalized;
+      }
+    }
+    return "";
   }
 
   function navIcon(routeName) {
@@ -1191,7 +1216,7 @@
           on:click={() => navigate(ROUTES.ACCOUNT)}
         >
           <i class="fa-solid fa-user" aria-hidden="true"></i>
-          <span>{userSummaryLabel()}</span>
+          <span>{userSummaryLabel(me, loading, authRecoveryError, $_)}</span>
         </button>
       </div>
     </header>
@@ -1289,7 +1314,9 @@
                 <h3 class="account-section-title">
                   {$_("account.sections.identity")}
                 </h3>
-                <div class="account-user">{me?.user}</div>
+                <div class="account-user">
+                  {identityUser(me) || $_("common.unknown")}
+                </div>
               </section>
               <section class="account-section">
                 <div class="account-section-header">
