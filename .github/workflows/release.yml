@@ -1,12 +1,8 @@
 name: Release
 
 on:
-  pull_request:
-    types:
-      - closed
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  push:
+    branches: [main]
 
 permissions:
   contents: write
@@ -20,9 +16,8 @@ concurrency:
 jobs:
   prepare:
     if: >-
-      github.event.pull_request.merged == true &&
-      github.event.pull_request.base.ref == github.event.repository.default_branch &&
-      startsWith(github.event.pull_request.head.ref, 'feature/')
+      github.event_name == 'push' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ${{ vars.ACTIONS_RUNNER || 'ubuntu-latest' }}
     outputs:
       release_required: ${{ steps.version.outputs.release_required }}
@@ -30,38 +25,41 @@ jobs:
       git_tag: ${{ steps.version.outputs.git_tag }}
       previous_tag: ${{ steps.version.outputs.previous_tag }}
       image: ${{ steps.image.outputs.name }}
-      merge_sha: ${{ github.event.pull_request.merge_commit_sha }}
+      merge_sha: ${{ github.sha }}
+      pr_number: ${{ steps.pr.outputs.pr_number }}
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GITHUB_REPOSITORY: ${{ github.repository }}
-      MERGE_COMMIT_SHA: ${{ github.event.pull_request.merge_commit_sha }}
-      PR_BODY: ${{ github.event.pull_request.body }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
-      PR_TITLE: ${{ github.event.pull_request.title }}
+      MERGE_COMMIT_SHA: ${{ github.sha }}
 
     steps:
       - name: Check out merge commit
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          ref: ${{ github.sha }}
 
       - name: Fetch tags
         run: |
           set -euo pipefail
           git fetch --force --tags origin
 
+      - name: Resolve merged feature PR
+        id: pr
+        run: python3 scripts/release_event.py resolve "$RUNNER_TEMP/release-pr.json"
+
       - name: Compute release version
+        if: steps.pr.outputs.eligible == 'true'
         id: version
         run: |
           set -euo pipefail
-          python3 scripts/release/compute_release.py
+          python3 scripts/release_event.py version "$RUNNER_TEMP/release-pr.json"
 
       - name: Stop when no release is required
         if: steps.version.outputs.release_required != 'true'
         run: |
           set -euo pipefail
-          echo "No release is required for PR #${PR_NUMBER}."
+          echo "No release is required for this push."
 
       - name: Normalize image name
         if: steps.version.outputs.release_required == 'true'
@@ -85,8 +83,6 @@ jobs:
   build:
     needs: prepare
     if: needs.prepare.outputs.release_required == 'true'
-    # Merged pull_request: closed runs otherwise have read-only cache access.
-    cache-mode: write
     strategy:
       fail-fast: false
       matrix:
@@ -163,7 +159,7 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GITHUB_REPOSITORY: ${{ github.repository }}
       MERGE_COMMIT_SHA: ${{ needs.prepare.outputs.merge_sha }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -210,7 +206,7 @@ jobs:
           python3 scripts/container/manifest.py verify /tmp/published-index.json
 
       - name: Set up Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
 
       - name: Lint Helm chart
         run: |
