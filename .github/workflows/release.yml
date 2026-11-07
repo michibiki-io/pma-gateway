@@ -18,14 +18,19 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
-    # Merged pull_request: closed runs default to read-only cache access.
-    cache-mode: write
+  prepare:
     if: >-
       github.event.pull_request.merged == true &&
-      github.event.pull_request.base.ref == 'main' &&
+      github.event.pull_request.base.ref == github.event.repository.default_branch &&
       startsWith(github.event.pull_request.head.ref, 'feature/')
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.ACTIONS_RUNNER || 'ubuntu-latest' }}
+    outputs:
+      release_required: ${{ steps.version.outputs.release_required }}
+      docker_tag: ${{ steps.version.outputs.docker_tag }}
+      git_tag: ${{ steps.version.outputs.git_tag }}
+      previous_tag: ${{ steps.version.outputs.previous_tag }}
+      image: ${{ steps.image.outputs.name }}
+      merge_sha: ${{ github.event.pull_request.merge_commit_sha }}
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GITHUB_REPOSITORY: ${{ github.repository }}
@@ -77,58 +82,137 @@ jobs:
           git tag -a "${GIT_TAG}" "${MERGE_COMMIT_SHA}" -m "Release ${GIT_TAG}"
           git push origin "refs/tags/${GIT_TAG}"
 
-      - name: Set up QEMU
-        if: steps.version.outputs.release_required == 'true'
-        uses: docker/setup-qemu-action@v4
-
-      - name: Set up Docker Buildx
-        if: steps.version.outputs.release_required == 'true'
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GHCR
-        if: steps.version.outputs.release_required == 'true'
-        uses: docker/login-action@v4
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.release_required == 'true'
+    # Merged pull_request: closed runs otherwise have read-only cache access.
+    cache-mode: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ (matrix.arch == 'arm64' && vars.ACTIONS_RUNNER_ARM64) || (matrix.arch == 'amd64' && vars.ACTIONS_RUNNER) || matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.merge_sha }}
+      - name: Verify native architecture
+        run: bash scripts/container/check-native.sh "${{ matrix.arch }}"
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Generate Docker metadata
-        if: steps.version.outputs.release_required == 'true'
+      - name: Generate image labels
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ steps.image.outputs.name }}
+          images: ${{ needs.prepare.outputs.image }}
           tags: |
-            type=raw,value=${{ steps.version.outputs.docker_tag }}
-            type=raw,value=${{ steps.version.outputs.git_tag }}
+            type=raw,value=${{ needs.prepare.outputs.docker_tag }}
+            type=raw,value=${{ needs.prepare.outputs.git_tag }}
             type=raw,value=latest
-
-      - name: Build and push multi-arch image
-        if: steps.version.outputs.release_required == 'true'
+      - name: Build native image and push by digest
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
           pull: true
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta.outputs.tags }}
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ needs.prepare.outputs.image }},push-by-digest=true,name-canonical=true,push=true
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            BUILD_VERSION=${{ steps.version.outputs.docker_tag }}
-            BUILD_COMMIT=${{ env.MERGE_COMMIT_SHA }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            BUILD_VERSION=${{ needs.prepare.outputs.docker_tag }}
+            BUILD_COMMIT=${{ needs.prepare.outputs.merge_sha }}
+          cache-from: type=gha,scope=pma-gateway-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=pma-gateway-${{ matrix.arch }}
           provenance: mode=max
           sbom: true
+      - name: Verify native runtime and record digest
+        env:
+          ARCH: ${{ matrix.arch }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE: ${{ needs.prepare.outputs.image }}
+        run: |
+          set -euo pipefail
+          python3 scripts/container/manifest.py record "$ARCH" "$DIGEST" /tmp/digests
+          docker pull "${IMAGE}@${DIGEST}"
+          test "$(docker image inspect --format '{{.Architecture}}' "${IMAGE}@${DIGEST}")" = "$ARCH"
+          bash scripts/check-php-runtime.sh "${IMAGE}@${DIGEST}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-digest-${{ matrix.arch }}
+          path: /tmp/digests/${{ matrix.arch }}.digest
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
+
+  publish:
+    needs: [prepare, build]
+    if: needs.prepare.outputs.release_required == 'true'
+    runs-on: ${{ vars.ACTIONS_RUNNER || 'ubuntu-latest' }}
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      MERGE_COMMIT_SHA: ${{ needs.prepare.outputs.merge_sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.merge_sha }}
+      - name: Fetch release tags
+        run: git fetch --force --tags origin
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: release-digest-*
+          path: /tmp/digests
+          merge-multiple: true
+      - name: Generate final image tags
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ needs.prepare.outputs.image }}
+          tags: |
+            type=raw,value=${{ needs.prepare.outputs.docker_tag }}
+            type=raw,value=${{ needs.prepare.outputs.git_tag }}
+            type=raw,value=latest
+      - name: Validate and publish multi-arch manifest
+        env:
+          IMAGE: ${{ needs.prepare.outputs.image }}
+          VERSION: ${{ needs.prepare.outputs.docker_tag }}
+          METADATA: ${{ steps.meta.outputs.json }}
+        run: |
+          set -euo pipefail
+          python3 scripts/container/manifest.py refs /tmp/digests "$IMAGE" > /tmp/image-refs.txt
+          mapfile -t refs < /tmp/image-refs.txt
+          docker buildx imagetools create --dry-run "${refs[@]}" > /tmp/index.json
+          python3 scripts/container/manifest.py verify /tmp/index.json
+          jq -r '.tags[]' <<< "$METADATA" > /tmp/image-tags.txt
+          tags=()
+          while IFS= read -r tag; do tags+=(--tag "$tag"); done < /tmp/image-tags.txt
+          docker buildx imagetools create "${tags[@]}" "${refs[@]}"
+          docker buildx imagetools inspect "${IMAGE}:${VERSION}" --raw > /tmp/published-index.json
+          python3 scripts/container/manifest.py verify /tmp/published-index.json
 
       - name: Set up Helm
-        if: steps.version.outputs.release_required == 'true'
         uses: azure/setup-helm@v4
 
       - name: Lint Helm chart
-        if: steps.version.outputs.release_required == 'true'
         run: |
           set -euo pipefail
           helm lint deploy/chart \
@@ -136,18 +220,16 @@ jobs:
             --set secrets.PMA_GATEWAY_INTERNAL_SHARED_SECRET=lint-internal-secret
 
       - name: Package Helm chart
-        if: steps.version.outputs.release_required == 'true'
         run: |
           set -euo pipefail
           mkdir -p dist/charts
 
           helm package deploy/chart \
-            --version "${{ steps.version.outputs.docker_tag }}" \
-            --app-version "${{ steps.version.outputs.docker_tag }}" \
+            --version "${{ needs.prepare.outputs.docker_tag }}" \
+            --app-version "${{ needs.prepare.outputs.docker_tag }}" \
             --destination dist/charts
 
       - name: Log in to GHCR for Helm
-        if: steps.version.outputs.release_required == 'true'
         run: |
           set -euo pipefail
           echo "${{ secrets.GITHUB_TOKEN }}" | \
@@ -156,19 +238,17 @@ jobs:
               --password-stdin
 
       - name: Push Helm chart to GHCR
-        if: steps.version.outputs.release_required == 'true'
         run: |
           set -euo pipefail
           owner="${GITHUB_REPOSITORY_OWNER,,}"
 
           helm push \
-            "dist/charts/pma-gateway-${{ steps.version.outputs.docker_tag }}.tgz" \
+            "dist/charts/pma-gateway-${{ needs.prepare.outputs.docker_tag }}.tgz" \
             "oci://ghcr.io/${owner}/charts"
 
       - name: Generate release notes
-        if: steps.version.outputs.release_required == 'true'
         env:
-          PREVIOUS_TAG: ${{ steps.version.outputs.previous_tag }}
+          PREVIOUS_TAG: ${{ needs.prepare.outputs.previous_tag }}
         run: |
           set -euo pipefail
           python3 scripts/release/generate_release_notes.py \
@@ -178,10 +258,9 @@ jobs:
             --output release-notes.md
 
       - name: Create or update GitHub Release
-        if: steps.version.outputs.release_required == 'true'
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ steps.version.outputs.git_tag }}
+          tag_name: ${{ needs.prepare.outputs.git_tag }}
           target_commitish: ${{ env.MERGE_COMMIT_SHA }}
           body_path: release-notes.md
           generate_release_notes: false

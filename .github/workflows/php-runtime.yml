@@ -9,10 +9,42 @@ permissions:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ (matrix.arch == 'arm64' && vars.ACTIONS_RUNNER_ARM64) || (matrix.arch == 'amd64' && vars.ACTIONS_RUNNER) || matrix.runner }}
     steps:
       - uses: actions/checkout@v6
-      - name: Build final application image
-        run: docker build --pull --tag pma-gateway:php-check .
-      - name: Verify patched PHP and FPM configuration
-        run: bash scripts/check-php-runtime.sh pma-gateway:php-check
+      - name: Verify native architecture
+        run: bash scripts/container/check-native.sh "${{ matrix.arch }}"
+      - name: Validate release workflow and manifest contracts
+        if: matrix.arch == 'amd64'
+        run: |
+          python3 -m pip install -r scripts/container/requirements-test.txt
+          python3 -m unittest discover -s scripts/container/tests -v
+      - uses: docker/setup-buildx-action@v4
+      - name: Build native final application image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          pull: true
+          load: true
+          push: false
+          platforms: ${{ matrix.platform }}
+          tags: pma-gateway:php-check
+          cache-from: type=gha,scope=pma-gateway-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=pma-gateway-${{ matrix.arch }}
+      - name: Verify native PHP and FPM configuration
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          test "$(docker image inspect --format '{{.Architecture}}' pma-gateway:php-check)" = "$ARCH"
+          bash scripts/check-php-runtime.sh pma-gateway:php-check
