@@ -52,23 +52,34 @@ class WorkflowTests(unittest.TestCase):
         return build
 
     def test_release_gates_and_shared_version(self):
-        self.assertEqual(self.release["on"], {"pull_request": {"types": ["closed"]}})
+        self.assertEqual(self.release["on"], {"push": {"branches": ["main"]}})
         self.assertEqual(self.release["concurrency"], {"group": "release-main", "cancel-in-progress": "false"})
         prepare = self.release["jobs"]["prepare"]
-        for gate in ["github.event.pull_request.merged == true",
-                     "github.event.pull_request.base.ref == github.event.repository.default_branch",
-                     "startsWith(github.event.pull_request.head.ref, 'feature/')"]:
+        for gate in ["github.event_name == 'push'",
+                     "github.ref == format('refs/heads/{0}', github.event.repository.default_branch)"]:
             self.assertIn(gate, prepare["if"])
-        self.assertEqual(prepare["outputs"]["merge_sha"], "${{ github.event.pull_request.merge_commit_sha }}")
+        self.assertEqual(prepare["outputs"]["merge_sha"], "${{ github.sha }}")
         for value in ["release_required", "docker_tag", "git_tag", "previous_tag"]:
             self.assertEqual(prepare["outputs"][value], "${{ steps.version.outputs." + value + " }}")
         self.assertIn("tag_exists != 'true'", step(prepare, name="Create and push release tag")["if"])
+        self.assertEqual(prepare["outputs"]["pr_number"], "${{ steps.pr.outputs.pr_number }}")
+        version = step(prepare, name="Compute release version")
+        self.assertEqual(version["if"], "steps.pr.outputs.eligible == 'true'")
+        self.assertIn('release_event.py version "$RUNNER_TEMP/release-pr.json"', version["run"])
+        self.assertIn('release_event.py resolve "$RUNNER_TEMP/release-pr.json"', step(prepare, name="Resolve merged feature PR")["run"])
+        self.assertEqual(step(prepare, action="actions/checkout")["with"], {"fetch-depth": "0", "ref": "${{ github.sha }}"})
+        source = (ROOT / ".github/workflows/release.yml").read_text()
+        self.assertNotIn("github.event.pull_request", source)
+        self.assertNotIn("cache-mode:", source)
+        self.assertNotIn("FORCE_JAVASCRIPT_ACTIONS_TO_NODE24", source)
+        self.assertEqual(step(self.release["jobs"]["publish"], action="azure/setup-helm")["uses"], "azure/setup-helm@v5")
+        self.assertEqual(self.release["jobs"]["publish"]["env"]["PR_NUMBER"], "${{ needs.prepare.outputs.pr_number }}")
 
     def test_native_digest_build_and_retry_safe_artifacts(self):
         job = self.release["jobs"]["build"]
         self.assertEqual(job["needs"], "prepare")
         self.assertEqual(job["if"], "needs.prepare.outputs.release_required == 'true'")
-        self.assertEqual(job["cache-mode"], "write")
+        self.assertNotIn("cache-mode", job)
         self.assertNotIn("setup-qemu", (ROOT / ".github/workflows/release.yml").read_text())
         build = self.native_matrix(job)
         for flag in ["push-by-digest=true", "name-canonical=true", "push=true"]:
