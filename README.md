@@ -379,6 +379,8 @@ Release uses three phases: `prepare` computes the version and creates/reuses the
 | linux/amd64 | ubuntu-24.04 | ACTIONS_RUNNER | pma-gateway-amd64 |
 | linux/arm64 | ubuntu-24.04-arm | ACTIONS_RUNNER_ARM64 | pma-gateway-arm64 |
 
+Release is limited to merged `feature/` PRs targeting the repository's default branch (currently `main`); the gate follows default-branch changes rather than a fixed branch name. `ACTIONS_RUNNER` also selects preparation and publication runners. Override runners must provide Bash, Git, Python 3 and a running Docker Engine/CLI; publication additionally needs jq. Setup actions install Buildx and Helm.
+
 An unset override always uses the matching hosted runner; arm64 is never skipped or emulated. Overrides must provide the matching CPU architecture or the job fails before building. Only release build jobs explicitly set `cache-mode: write`, because merged `pull_request: closed` runs otherwise receive read-only cache access. Each platform retains image labels, BUILD_VERSION/BUILD_COMMIT, provenance and SBOM, verifies the native PHP runtime, and uploads a retry-safe digest artifact. Final image tags require both successful builds and validation of the combined platform/attestation descriptors. If either build fails or a digest is missing/invalid, final image tags, Helm and GitHub Release publication stop. An earlier Git tag or pushed untagged digest may remain; there is no automatic rollback. Reruns reuse the merge commit's tag and overwrite each architecture's artifact in the same run.
 
 PR PHP runtime validation builds and checks both architectures on the native runners without registry publishing credentials. It runs only on `opened`, `synchronize`, and `reopened`, not main pushes or PR close/merge. The amd64 job also runs the focused workflow/digest tests: `python3 -m pip install -r scripts/container/requirements-test.txt` then `python3 -m unittest discover -s scripts/container/tests -v`. Static tests and native PR checks do not prove live registry index/attestation or Helm/Release publication; those are confirmed by the next authorized Release run. actionlint 1.7.12 does not recognize the supported cache-mode key; report that tooling limit separately. No measured build-speed improvement is claimed without comparable runs.
@@ -865,6 +867,8 @@ Release は3段階です。`prepare` が merge commit の version と Git tag �
 |---|---|---|---|
 | linux/amd64 | ubuntu-24.04 | ACTIONS_RUNNER | pma-gateway-amd64 |
 | linux/arm64 | ubuntu-24.04-arm | ACTIONS_RUNNER_ARM64 | pma-gateway-arm64 |
+
+Release はリポジトリの既定ブランチ（現在は `main`）にマージされた `feature/` PR に限定し、固定名ではなく既定ブランチの変更に追従します。`ACTIONS_RUNNER` は準備・公開 runner の選択にも使います。上書き runner には Bash、Git、Python 3、稼働中の Docker Engine/CLI が必要で、公開処理には jq も必要です。Buildx と Helm は setup action が導入します。
 
 変数が未設定でも、対応する hosted runner を必ず使います。arm64 の省略やエミュレーションへの fallback はありません。上書き runner の CPU が対象 arch と異なる場合は build 前に失敗します。マージ後の `pull_request: closed` は既定でキャッシュ読み取り専用となるため、Release build job に限定して `cache-mode: write` を指定します。各系統で label、BUILD_VERSION/BUILD_COMMIT、provenance、SBOM を維持し、native PHP runtime を検証して再実行可能な digest artifact を渡します。最終タグ付与には、両 build の成功と platform / attestation descriptor の検証が必要です。片系失敗や digest 欠落・不正時には final image / Helm / GitHub Release の公開を止めます。作成済み Git tag や未タグ付け digest が残る場合があり、自動 rollback は行いません。再実行では同じ merge commit の tag を再利用し、同一 run 内の arch 別 artifact を上書きします。
 
