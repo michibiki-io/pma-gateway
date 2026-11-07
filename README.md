@@ -392,6 +392,21 @@ docker buildx build \
   .
 ```
 
+The runtime uses `php:8.4.27-fpm-trixie`. PHP 8.4.27 fixes [CVE-2026-109618 and CVE-2026-109619](https://www.php.net/archive/2026.php#2026-10-21-5); PHP-FPM is affected, so upstream authentication is not a substitute for updating PHP. The build rejects PHP versions below this security floor. The FPM pool also forces `session.upload_progress.enabled=off` before request parsing, following the [additional session advisory for CVE-2026-115560](https://www.php.net/archive/2026.php#2026-10-23-1). This disables PHP session upload-progress reporting, not file uploads/imports. Files/Redis sessions and the existing upload, memory and timeout environment variables remain supported. We have not established whether the additional serializer-switch exploit condition occurs in this application.
+
+Existing deployments are not patched by a source change. Rebuild and recreate local containers to replace every PHP worker:
+
+```bash
+docker compose build --pull pma-gateway
+docker compose up -d --force-recreate pma-gateway
+docker compose exec pma-gateway php -v
+docker compose exec pma-gateway php-fpm --fpm-config /opt/pma-gateway/php-fpm.conf -tt
+```
+
+For published images, deploy the updated release **version tag or digest** in Compose, Kubernetes or Helm and replace all old containers/Pods. With `latest` and `IfNotPresent`, Pod recreation alone can reuse a cached vulnerable image. Check every replacement container: PHP must be 8.4.27 or later in the 8.4 series, and the FPM dump must include `php_admin_value[session.upload_progress.enabled] = 0` (the disabled value may also be printed as `off`). `php -i` uses CLI configuration and does not show pool overrides. Verify normal signon/direct login and an import after rollout. Retain this pool protection until a reviewed update addresses the additional advisory.
+
+For a locally built image, run `bash scripts/check-php-runtime.sh pma-gateway:local`. The additive `.github/workflows/php-runtime.yml` runs this check on the final image for PRs; a new workflow is necessary because the shared Release workflow only runs after PR closure. Existing release automation and `scripts/release/` remain unchanged.
+
 Writable paths:
 
 ```text
@@ -850,6 +865,21 @@ docker buildx build \
   -t pma-gateway:local \
   .
 ```
+
+runtime は `php:8.4.27-fpm-trixie` を使用します。PHP 8.4.27 は [CVE-2026-109618 / CVE-2026-109619](https://www.php.net/archive/2026.php#2026-10-21-5) の修正版です。PHP-FPM も対象であり、上流の認証は PHP 更新の代わりにはなりません。ビルド時にこの修正バージョンを下回る PHP を拒否します。また、[CVE-2026-115560 の追加勧告](https://www.php.net/archive/2026.php#2026-10-23-1) に従い、FPM pool でリクエスト解析前に `session.upload_progress.enabled=off` を強制します。PHP session を使う upload progress 表示は無効になりますが、ファイル upload / import は維持されます。files / Redis session と既存の upload・memory・timeout 環境変数も引き続き利用できます。追加の serializer 切替条件による悪用可能性は、このアプリケーションでは確認していません。
+
+ソースを変更しても既存環境は修正されません。ローカルでは次の手順で再ビルド・再作成し、すべての PHP worker を置き換えます。
+
+```bash
+docker compose build --pull pma-gateway
+docker compose up -d --force-recreate pma-gateway
+docker compose exec pma-gateway php -v
+docker compose exec pma-gateway php-fpm --fpm-config /opt/pma-gateway/php-fpm.conf -tt
+```
+
+公開イメージを使う場合は、Compose / Kubernetes / Helm の参照を更新済み release の **version タグまたは digest** に変更し、旧コンテナ・Pod をすべて置き換えてください。`latest` と `IfNotPresent` の組み合わせでは、Pod を再作成しても古いイメージのキャッシュを使う場合があります。置換後の各コンテナで、PHP が 8.4 系の 8.4.27 以降であり、FPM の出力に `php_admin_value[session.upload_progress.enabled] = 0` があることを確認します（無効値が `off` と表示される場合もあります）。`php -i` は CLI 設定のため pool の上書きを確認できません。反映後は通常の signon / 直接ログインと import も確認してください。追加勧告を解消する更新をレビューするまでは pool 設定を維持します。
+
+ローカルイメージは `bash scripts/check-php-runtime.sh pma-gateway:local` で検証できます。新規の `.github/workflows/php-runtime.yml` は PR 時に最終イメージでこの検証を実行します。共有 Release workflow は PR close 後だけ動くため、別 workflow の追加が必要です。既存の release automation と `scripts/release/` は変更しません。
 
 書き込みが必要な path:
 
