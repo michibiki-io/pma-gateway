@@ -372,6 +372,10 @@ Both probe endpoints also return build metadata, including the application versi
 
 Release automation computes the next version, creates the release tag from the merge commit, and injects the resolved version into the image build with the generic build args `BUILD_VERSION` and `BUILD_COMMIT`. This keeps the workflow reusable across repositories and avoids conflicts with branch protection rules.
 
+The gated release job explicitly sets `cache-mode: write` because merged `pull_request: closed` runs otherwise receive read-only cache access. This preserves GHA build cache restore/export and the existing release conditions. PHP runtime validation runs only on PR `opened`, `synchronize`, and `reopened` events; closing/merging a PR or pushing to `main` does not trigger it.
+
+The [failed v0.3.5 release run](https://github.com/michibiki-io/pma-gateway/actions/runs/42359258887) on 2026-11-07 created the Git tag and pushed the container images before cache export failed. Helm publication and GitHub Release creation were skipped. This workflow fix does not recover that partial release or modify its artifacts; recovery requires separate operational work. Rerunning the historical run uses its original workflow definition.
+
 At runtime:
 
 - the backend reads `BUILD_VERSION` and `BUILD_COMMIT`
@@ -405,7 +409,7 @@ docker compose exec pma-gateway php-fpm --fpm-config /opt/pma-gateway/php-fpm.co
 
 For published images, deploy the updated release **version tag or digest** in Compose, Kubernetes or Helm and replace all old containers/Pods. With `latest` and `IfNotPresent`, Pod recreation alone can reuse a cached vulnerable image. Check every replacement container: PHP must be 8.4.27 or later in the 8.4 series, and the FPM dump must include `php_admin_value[session.upload_progress.enabled] = 0` (the disabled value may also be printed as `off`). `php -i` uses CLI configuration and does not show pool overrides. Verify normal signon/direct login and an import after rollout. Retain this pool protection until a reviewed update addresses the additional advisory.
 
-For a locally built image, run `bash scripts/check-php-runtime.sh pma-gateway:local`. The additive `.github/workflows/php-runtime.yml` runs this check on the final image for PRs; a new workflow is necessary because the shared Release workflow only runs after PR closure. Existing release automation and `scripts/release/` remain unchanged.
+For a locally built image, run `bash scripts/check-php-runtime.sh pma-gateway:local`. The `.github/workflows/php-runtime.yml` runs this check on the final image for PR creation, updates and reopening; the shared Release workflow runs separately after PR closure. The release job explicitly enables cache write access; `scripts/release/` remains unchanged.
 
 Writable paths:
 
@@ -846,6 +850,10 @@ GET /readyz
 
 release automation は次の version を計算し、merge commit から release tag を作成し、解決済み version を汎用 build arg `BUILD_VERSION` と `BUILD_COMMIT` として image build に注入します。これにより workflow を repo 間で再利用しやすくし、branch protection rule とも衝突しにくくしています。
 
+条件を満たした release job に限定して `cache-mode: write` を指定します。マージ後の `pull_request: closed` は既定ではキャッシュ読み取り専用となるためです。GHA build cache の読み書きと既存の release 条件は維持します。PHP runtime 検証は PR の `opened`、`synchronize`、`reopened` でのみ実行し、PR の close・merge や `main` への push では実行しません。
+
+2026-11-07 の [v0.3.5 Release 失敗 run](https://github.com/michibiki-io/pma-gateway/actions/runs/42359258887) は、Git tag 作成とコンテナイメージの公開後、キャッシュ保存で失敗しました。Helm 公開と GitHub Release 作成はスキップされています。今回の workflow 修正は、その部分公開状態の復旧や既存公開物の変更を行うものではありません。復旧は別の運用作業です。過去の run を再実行しても、その run の元の workflow 定義が使われます。
+
 runtime では次のように使われます。
 
 - backend が `BUILD_VERSION` と `BUILD_COMMIT` を読む
@@ -879,7 +887,7 @@ docker compose exec pma-gateway php-fpm --fpm-config /opt/pma-gateway/php-fpm.co
 
 公開イメージを使う場合は、Compose / Kubernetes / Helm の参照を更新済み release の **version タグまたは digest** に変更し、旧コンテナ・Pod をすべて置き換えてください。`latest` と `IfNotPresent` の組み合わせでは、Pod を再作成しても古いイメージのキャッシュを使う場合があります。置換後の各コンテナで、PHP が 8.4 系の 8.4.27 以降であり、FPM の出力に `php_admin_value[session.upload_progress.enabled] = 0` があることを確認します（無効値が `off` と表示される場合もあります）。`php -i` は CLI 設定のため pool の上書きを確認できません。反映後は通常の signon / 直接ログインと import も確認してください。追加勧告を解消する更新をレビューするまでは pool 設定を維持します。
 
-ローカルイメージは `bash scripts/check-php-runtime.sh pma-gateway:local` で検証できます。新規の `.github/workflows/php-runtime.yml` は PR 時に最終イメージでこの検証を実行します。共有 Release workflow は PR close 後だけ動くため、別 workflow の追加が必要です。既存の release automation と `scripts/release/` は変更しません。
+ローカルイメージは `bash scripts/check-php-runtime.sh pma-gateway:local` で検証できます。`.github/workflows/php-runtime.yml` は PR の作成・更新・再オープン時に最終イメージでこの検証を実行します。共有 Release workflow は PR close 後に別途動き、release job のキャッシュ書き込み権限を明示します。`scripts/release/` は変更しません。
 
 書き込みが必要な path:
 

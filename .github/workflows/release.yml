@@ -19,6 +19,8 @@ concurrency:
 
 jobs:
   release:
+    # Merged pull_request: closed runs default to read-only cache access.
+    cache-mode: write
     if: >-
       github.event.pull_request.merged == true &&
       github.event.pull_request.base.ref == 'main' &&
