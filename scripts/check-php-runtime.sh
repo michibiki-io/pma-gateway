@@ -19,10 +19,9 @@ for source in /opt/pma-gateway/php/pma-signon.php /opt/phpmyadmin/config.inc.php
     docker run --rm --entrypoint php "$image" -l "$source"
 done
 
-# Check the exact pool used by supervisord, rather than the unrelated CLI INI.
-# An enabled global INI must not override the pool's administrative protection.
+# Check that the exact pool used by supervisord declares the protection.
+# This config dump does not execute a request or test INI precedence.
 config="$(docker run --rm --entrypoint php-fpm "$image" \
-    -d session.upload_progress.enabled=1 \
     --fpm-config /opt/pma-gateway/php-fpm.conf -tt 2>&1)" || {
     printf '%s\n' "$config" >&2
     exit 1
