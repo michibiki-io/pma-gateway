@@ -1,0 +1,19 @@
+name: PHP runtime
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build final application image
+        run: docker build --pull --tag pma-gateway:php-check .
+      - name: Verify patched PHP and FPM configuration
+        run: bash scripts/check-php-runtime.sh pma-gateway:php-check

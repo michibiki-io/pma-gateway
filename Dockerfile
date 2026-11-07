@@ -32,7 +32,9 @@ RUN apk add --no-cache ca-certificates tar wget \
     && mkdir -p /out \
     && tar -xzf /tmp/phpmyadmin.tar.gz -C /out --strip-components=1
 
-FROM php:8.4-fpm-trixie AS runtime
+FROM php:8.4.27-fpm-trixie AS runtime
+# CVE-2026-109618 / CVE-2026-109619: reject an unpatched runtime.
+RUN php -r 'if (PHP_MAJOR_VERSION !== 8 || PHP_MINOR_VERSION !== 4 || version_compare(PHP_VERSION, "8.4.27", "<")) { fwrite(STDERR, "Patched PHP 8.4 >= 8.4.27 is required\n"); exit(1); }'
 ARG PHPMYADMIN_VERSION
 ARG BUILD_COMMIT
 ARG BUILD_VERSION
