@@ -4,8 +4,8 @@ set -euo pipefail
 image="${1:?usage: check-php-runtime.sh IMAGE}"
 
 docker run --rm --entrypoint php "$image" -r '
-if (PHP_MAJOR_VERSION !== 8 || PHP_MINOR_VERSION !== 4 || version_compare(PHP_VERSION, "8.4.27", "<")) {
-    fwrite(STDERR, "Patched PHP 8.4 >= 8.4.27 is required\n"); exit(1);
+if (PHP_MAJOR_VERSION !== 8 || PHP_MINOR_VERSION !== 4 || version_compare(PHP_VERSION, "8.4.28", "<")) {
+    fwrite(STDERR, "Patched PHP 8.4 >= 8.4.28 is required\n"); exit(1);
 }
 foreach (["mysqli", "pdo_mysql", "redis"] as $extension) {
     if (!extension_loaded($extension)) {
